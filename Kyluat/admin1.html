@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="../student_data.js"></script>
     <style>
         :root {
             --primary: #6366f1;
@@ -691,13 +692,51 @@
         initData();
 
         function initData() {
-            // Fetch Students
+            // STEP 1: Load Static Data
+            if (typeof STATIC_STUDENTS !== 'undefined') {
+                allStudents = [...STATIC_STUDENTS];
+                renderStudentTable(); 
+            }
+
+            // STEP 2: Fetch Students Updates (Merge)
             rootRef.child('Students').on('value', snap => {
-                allStudents = [];
-                snap.forEach(s => {
-                    allStudents.push({ id: s.key, ...s.val() });
-                });
-                renderStudentTable();
+                const firebaseData = snap.val() || {};
+                let hasChanges = false;
+                
+                // If initial static load failed or empty, fallback to full load behavior essentially
+                if (allStudents.length === 0) {
+                     // Just load everything
+                     Object.entries(firebaseData).forEach(([key, val]) => {
+                         allStudents.push({ id: key, ...val });
+                     });
+                     hasChanges = true;
+                } else {
+                    const studentMap = new Map(allStudents.map(s => [s.id, s]));
+
+                    Object.entries(firebaseData).forEach(([key, val]) => {
+                        if (studentMap.has(key)) {
+                            const s = studentMap.get(key);
+                            // Update dynamic fields but PRESERVE photo from static
+                            // Using a check to avoid unnecessary re-renders if nothing changed
+                            if (s.stars !== val.stars || s.name !== val.name || s.class !== val.class) {
+                                s.stars = val.stars;
+                                s.name = val.name;
+                                s.class = val.class;
+                                hasChanges = true;
+                            }
+                        } else {
+                            // New student (not in static)
+                            allStudents.push({ id: key, ...val });
+                            hasChanges = true;
+                        }
+                    });
+                     
+                    // Optional: Handle deletions if needed (existing in static but not in firebase)
+                    // const firebaseIds = new Set(Object.keys(firebaseData));
+                    // allStudents = allStudents.filter(s => firebaseIds.has(s.id));
+                }
+                
+                if (hasChanges || allStudents.length === 0) renderStudentTable();
             });
 
             // Fetch Violations

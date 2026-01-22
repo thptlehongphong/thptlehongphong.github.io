@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="student_data.js"></script>
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-WGFH09SJ3J"></script>
 <script>
@@ -651,16 +652,53 @@
         }
 
         function initData() {
-            // Fetch Students first
-            rootRef.child('Students').on('value', snap => {
-                allStudents = [];
-                snap.forEach(s => {
-                    allStudents.push({ id: s.key, ...s.val() });
-                });
+            // STEP 1: Load Initial Data from Static File (Instant & Zero Bandwidth)
+            if (typeof STATIC_STUDENTS !== 'undefined') {
+                allStudents = [...STATIC_STUDENTS];
                 document.getElementById('studentCount').textContent = allStudents.length;
                 renderStudentLeaderboard();
                 renderClassLeaderboard();
-                if (allViolations.length > 0) renderTable();
+            } else {
+                console.error("STATIC_STUDENTS not found! Please ensure student_data.js is loaded.");
+            }
+
+            // STEP 2: Listen for specific updates from Firebase (Lightweight)
+            // We still listen to 'Students' but we MERGE data instead of replacing.
+            // This ensures photos (heavy) stay from static file, but valid stars/names update.
+            rootRef.child('Students').on('value', snap => {
+                const firebaseData = snap.val() || {};
+                
+                // Update existing students or add new ones (if any)
+                let hasChanges = false;
+                
+                // Create a map for fast lookup
+                const studentMap = new Map(allStudents.map(s => [s.id, s]));
+
+                Object.entries(firebaseData).forEach(([key, val]) => {
+                    if (studentMap.has(key)) {
+                        const s = studentMap.get(key);
+                        // Update only dynamic fields: stars, name, class
+                        // PRESERVE s.photo from static file (unless firebase has a new photo url that isn't base64, but we assume static is source of truth for base64)
+                        if (s.stars !== val.stars || s.name !== val.name || s.class !== val.class) {
+                            s.stars = val.stars;
+                            s.name = val.name;
+                            s.class = val.class;
+                            hasChanges = true;
+                        }
+                    } else {
+                        // New student not in static file? Add them (Full load for them)
+                        // This handles new students added after static export.
+                        allStudents.push({ id: key, ...val });
+                        hasChanges = true;
+                    }
+                });
+
+                if (hasChanges || allStudents.length === 0) {
+                     document.getElementById('studentCount').textContent = allStudents.length;
+                     renderStudentLeaderboard();
+                     renderClassLeaderboard();
+                     if (allViolations.length > 0) renderTable();
+                }
             });
 
             // Fetch Violations

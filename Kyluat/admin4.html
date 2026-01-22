@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="../student_data.js"></script>
     <style>
         :root {
             --primary: #6366f1;
@@ -177,9 +178,27 @@
             const id = document.getElementById('searchId').value.trim().toUpperCase();
             if(!id) return;
 
+            // 1. Try to find in Static Data first
+            let staticData = null;
+            if (typeof STATIC_STUDENTS !== 'undefined') {
+                staticData = STATIC_STUDENTS.find(s => s.id === id);
+            }
+            
+            // 2. Fetch latest dynamic data
             const snap = await rootRef.child('Students').child(id).once('value');
-            if (snap.exists()) {
-                currentStudent = { studentId: id, ...snap.val() };
+            
+            if (snap.exists() || staticData) {
+                const firebaseData = snap.val() || {};
+                
+                // Merge
+                currentStudent = { 
+                    studentId: id,
+                    name: firebaseData.name || (staticData ? staticData.name : ""),
+                    class: firebaseData.class || (staticData ? staticData.class : ""),
+                    photo: firebaseData.photo || (staticData ? staticData.photo : ""),
+                    stars: firebaseData.stars || 0
+                };
+                
                 document.getElementById('resImg').src = currentStudent.photo;
                 document.getElementById('resName').textContent = currentStudent.name;
                 document.getElementById('resInfo').textContent = `Lớp: ${currentStudent.class}`;
