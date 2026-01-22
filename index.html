@@ -536,12 +536,13 @@
 
                 const today = new Date().toISOString().split('T')[0];
                 const isExpired = systemConfig.expiryDate && today > systemConfig.expiryDate;
-                const isLocked = systemConfig.status === 'locked';
+                // Note: We no longer block the whole page on 'status' lock, 
+                // because we now use granular locks. Only expiry blocks the public page.
 
-                if (isExpired || isLocked) {
+                if (isExpired) {
                     // Nếu là admin0 đang login trong session thì vẫn cho xem
                     if (sessionStorage.getItem('kyluat_role') !== 'admin0') {
-                        const msg = systemConfig.message || (isExpired ? "Hệ thống đã hết thời hạn sử dụng!" : "Hệ thống hiện đang bị khóa!");
+                        const msg = systemConfig.message || "Hệ thống đã hết thời hạn sử dụng!";
                         document.body.innerHTML = `
                             <div style="height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#0f172a; color:white; font-family:'Outfit', sans-serif; text-align:center; padding:20px;">
                                 <h1 style="color:#ef4444; font-size:4rem; margin-bottom:20px;">🛑</h1>
@@ -607,16 +608,21 @@
                 return;
             }
 
-            // Check if system is restricted for others
+            // Check global expiry only (individual locks are checked per role)
             const today = new Date().toISOString().split('T')[0];
-            const isRestricted = (systemConfig.expiryDate && today > systemConfig.expiryDate) || systemConfig.status === 'locked';
-            if (isRestricted) {
-                alert(systemConfig.message || "Hệ thống đang bị tạm khóa hoặc hết hạn. Vui lòng liên hệ Admin 0.");
+            const isExpired = systemConfig.expiryDate && today > systemConfig.expiryDate;
+            if (isExpired) {
+                alert(systemConfig.message || "Hệ thống đã hết hạn sử dụng. Vui lòng liên hệ Admin 0.");
                 return;
             }
 
-            // 2. Check Admin 1 List (Fetched from Firebase Settings/Admin1List)
+            // 2. Check Admin 1 List
             if (admin1List && admin1List[id] && admin1List[id].pass === pass) {
+                // Check Permission for Admin 1
+                if (systemConfig.permissions && systemConfig.permissions.admin1 === false) {
+                     alert("Tài khoản Admin 1 của bạn đang bị tạm khóa.");
+                     return;
+                }
                 sessionStorage.setItem('kyluat_role', 'admin1');
                 sessionStorage.setItem('kyluat_id', id);
                 window.location.href = 'Kyluat/admin1.html';
@@ -628,9 +634,17 @@
             const data = snapshot.val();
 
             if (data && data.pass === pass) {
-                sessionStorage.setItem('kyluat_role', data.role);
+                const role = data.role; // admin2, admin3, admin4
+                
+                // Check Permission based on role
+                if (systemConfig.permissions && systemConfig.permissions[role] === false) {
+                    alert(`Tài khoản ${role.toUpperCase()} đang bị tạm khóa.`);
+                    return;
+                }
+
+                sessionStorage.setItem('kyluat_role', role);
                 sessionStorage.setItem('kyluat_id', id);
-                window.location.href = `Kyluat/admin${data.role.replace('admin', '')}.html`;
+                window.location.href = `Kyluat/admin${role.replace('admin', '')}.html`;
             } else {
                 alert('ID hoặc mật khẩu không đúng!');
             }

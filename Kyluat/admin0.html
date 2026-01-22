@@ -81,11 +81,25 @@
             </div>
 
             <div class="form-group">
-                <label>Trạng thái hệ thống</label>
-                <select id="systemStatus">
-                    <option value="active">Hoạt động (Bình thường)</option>
-                    <option value="locked">Khóa hệ thống (Không thể truy cập các Admin)</option>
-                </select>
+                <label>Phân quyền hoạt động (Tắt/Bật từng Admin)</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid var(--glass-border);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="permAdmin1" style="width: 20px; height: 20px;">
+                        <label for="permAdmin1" style="margin: 0;">Cho phép Admin 1</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="permAdmin2" style="width: 20px; height: 20px;">
+                        <label for="permAdmin2" style="margin: 0;">Cho phép Admin 2</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="permAdmin3" style="width: 20px; height: 20px;">
+                        <label for="permAdmin3" style="margin: 0;">Cho phép Admin 3</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="permAdmin4" style="width: 20px; height: 20px;">
+                        <label for="permAdmin4" style="margin: 0;">Cho phép Admin 4</label>
+                    </div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -106,7 +120,10 @@
         const admin1IdInput = document.getElementById('admin1Id');
         const admin1PassInput = document.getElementById('admin1Pass');
         const expiryDateInput = document.getElementById('expiryDate');
-        const systemStatusSelect = document.getElementById('systemStatus');
+        const permAdmin1 = document.getElementById('permAdmin1');
+        const permAdmin2 = document.getElementById('permAdmin2');
+        const permAdmin3 = document.getElementById('permAdmin3');
+        const permAdmin4 = document.getElementById('permAdmin4');
         const systemMessageInput = document.getElementById('systemMessage');
         const daysRemainingText = document.getElementById('daysRemaining');
         const admin1TableBody = document.getElementById('admin1TableBody');
@@ -135,8 +152,12 @@
             // Populate Config
             if (data.Config) {
                 expiryDateInput.value = data.Config.expiryDate || "";
-                systemStatusSelect.value = data.Config.status || "active";
-                systemMessageInput.value = data.Config.message || "";
+                // Permissions (Default true if not set)
+                const perms = data.Config.permissions || { admin1: true, admin2: true, admin3: true, admin4: true };
+                permAdmin1.checked = perms.admin1 !== false;
+                permAdmin2.checked = perms.admin2 !== false;
+                permAdmin3.checked = perms.admin3 !== false;
+                permAdmin4.checked = perms.admin4 !== false;
                 
                 if (data.Config.expiryDate) {
                     const diff = new Date(data.Config.expiryDate) - new Date();
@@ -165,10 +186,15 @@
 
         async function saveConfig() {
             const expiryDate = expiryDateInput.value;
-            const status = systemStatusSelect.value;
             const message = systemMessageInput.value.trim();
+            const permissions = {
+                admin1: permAdmin1.checked,
+                admin2: permAdmin2.checked,
+                admin3: permAdmin3.checked,
+                admin4: permAdmin4.checked
+            };
             
-            await rootRef.child('Settings/Config').set({ expiryDate, status, message });
+            await rootRef.child('Settings/Config').set({ expiryDate, permissions, message });
             alert("Đã lưu cấu hình hệ thống!");
         }
 
