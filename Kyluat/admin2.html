@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin 2 - Nhập Dữ Liệu Học Sinh</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+        body { background: #0f172a; color: white; min-height: 100vh; padding: 20px 5%; }
+
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 24px; padding: 25px; }
+
+        .upload-area {
+            border: 2px dashed var(--glass-border);
+            border-radius: 16px;
+            padding: 30px 20px;
+            margin-bottom: 24px;
+            cursor: pointer;
+            text-align: center;
+            position: relative;
+        }
+
+        .upload-area input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+        .preview-img {
+            width: 120px; height: 120px; border-radius: 50%; object-fit: cover;
+            margin: 0 auto 15px; display: none; border: 3px solid var(--primary);
+        }
+
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 0.85rem; }
+        input {
+            width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03); color: white; outline: none;
+        }
+
+        .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.3s; margin-top: 10px; }
+        .btn-primary { background: var(--primary); color: white; }
+
+        .loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9); z-index: 1000; justify-content: center; align-items: center; flex-direction: column;
+        }
+
+        /* Modal Preview */
+        .modal {
+            display: none; position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); z-index: 2000;
+            justify-content: center; align-items: center; backdrop-filter: blur(5px);
+        }
+        .modal-content { max-width: 90%; max-height: 90%; border-radius: 20px; border: 2px solid var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h3>Admin 2 - Nhập Dữ Liệu</h3>
+            <button style="background: none; border: none; color: white; cursor: pointer;" onclick="logout()">Thoát</button>
+        </div>
+
+        <div class="card">
+            <div class="upload-area" id="dropZone">
+                <img id="imagePreview" class="preview-img" src="" alt="Preview" onclick="showImg(this.src)">
+                <div id="uploadPlaceholder">
+                    <span style="font-size: 30px;">📸</span>
+                    <p style="margin-bottom: 15px;">Chọn phương thức lấy ảnh học sinh</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 10px;">
+                        <button class="btn btn-primary" style="font-size: 0.8rem; padding: 10px;" onclick="document.getElementById('fileCapture').click()">Chụp ảnh</button>
+                        <button class="btn" style="background: var(--glass-border); color: white; font-size: 0.8rem; padding: 10px;" onclick="document.getElementById('fileBrowse').click()">Chọn file</button>
+                    </div>
+                </div>
+                <input type="file" id="fileCapture" accept="image/*" capture="environment" style="display: none;">
+                <input type="file" id="fileBrowse" accept="image/*" style="display: none;">
+                
+                <div id="previewActions" style="display: none; margin-top: 10px;">
+                    <p id="sizeInfo" style="font-size: 0.8rem; color: #f59e0b; margin-bottom: 8px;"></p>
+                    <a id="downloadLink" download="check-5kb.jpg" class="btn" style="background: #10b981; color: white; text-decoration: none; display: inline-block; width: auto; padding: 8px 15px; font-size: 0.8rem;">Tải về kiểm tra</a>
+                    <button type="button" class="btn" style="background: var(--danger); color: white; width: auto; padding: 8px 15px; font-size: 0.8rem;" onclick="resetUpload()">Làm lại</button>
+                </div>
+            </div>
+
+            <form id="studentForm">
+                <div class="input-group">
+                    <label>Họ và tên học sinh</label>
+                    <input type="text" id="name" placeholder="VD: Nguyễn Văn A" required>
+                </div>
+                <div class="input-group">
+                    <label>Lớp</label>
+                    <select id="class" required>
+                        <option value="">-- Đang tải danh sách lớp --</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Ngày sinh</label>
+                    <input type="date" id="dob" required>
+                </div>
+                <div class="input-group">
+                    <label>Mã số học sinh (MSHS)</label>
+                    <input type="text" id="studentId" placeholder="VD: HS123456" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="submitBtn">Lưu Thông Tin Hệ Thống</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal" onclick="closeImg()">
+        <img class="modal-content" id="imgFull">
+    </div>
+
+    <div class="loading-overlay" id="loader">
+        <p>Đang xử lý ảnh xuống 5kB...</p>
+    </div>
+
+    <script src="firebase.config.js"></script>
+    <script>
+        const currentRole = sessionStorage.getItem('kyluat_role');
+        if (currentRole !== 'admin2' && currentRole !== 'admin0') {
+            window.location.href = '../index.html';
+        }
+
+        // System Control Check
+        rootRef.child('Settings/Config').on('value', snap => {
+            const config = snap.val() || { status: 'active' };
+            const today = new Date().toISOString().split('T')[0];
+            const isExpired = config.expiryDate && today > config.expiryDate;
+            const isLocked = config.status === 'locked';
+
+            if ((isExpired || isLocked) && currentRole !== 'admin0') {
+                alert(config.message || "Hệ thống đã bị khóa hoặc hết hạn!");
+                window.location.href = '../index.html';
+            }
+        });
+
+        // Photo Modal functions
+        function showImg(src) {
+            if(!src) return;
+            const modal = document.getElementById('imageModal');
+            const img = document.getElementById('imgFull');
+            img.src = src;
+            modal.style.display = 'flex';
+        }
+
+        function closeImg() {
+            document.getElementById('imageModal').style.display = 'none';
+        }
+
+        const fileCapture = document.getElementById('fileCapture');
+        const fileBrowse = document.getElementById('fileBrowse');
+        const imgPreview = document.getElementById('imagePreview');
+        const placeholder = document.getElementById('uploadPlaceholder');
+        const previewActions = document.getElementById('previewActions');
+        const sizeInfo = document.getElementById('sizeInfo');
+        const downloadLink = document.getElementById('downloadLink');
+        const studentForm = document.getElementById('studentForm');
+        const loader = document.getElementById('loader');
+
+        let compressedBase64 = null;
+
+        [fileCapture, fileBrowse].forEach(input => {
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                loader.style.display = 'flex';
+                try {
+                    const compressedBlob = await compressImage(file);
+                    compressedBase64 = await blobToBase64(compressedBlob);
+                    
+                    imgPreview.src = compressedBase64;
+                    imgPreview.style.display = 'block';
+                    placeholder.style.display = 'none';
+                    previewActions.style.display = 'block';
+                    
+                    sizeInfo.textContent = `Kích thước: ${(compressedBlob.size / 1024).toFixed(2)} kB`;
+                    downloadLink.href = URL.createObjectURL(compressedBlob);
+                } catch (err) {
+                    alert('Lỗi xử lý ảnh!');
+                } finally {
+                    loader.style.display = 'none';
+                }
+            });
+        });
+
+        function resetUpload() {
+            compressedBase64 = null;
+            imgPreview.style.display = 'none';
+            placeholder.style.display = 'block';
+            previewActions.style.display = 'none';
+            fileCapture.value = '';
+            fileBrowse.value = '';
+        }
+
+        studentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!compressedBase64) {
+                alert('Vui lòng chụp hoặc chọn ảnh học sinh!');
+                return;
+            }
+
+            // Fetch Default Stars first
+            const settingsSnap = await rootRef.child('Settings/DefaultStars').once('value');
+            const defaultStars = settingsSnap.val() || 0;
+
+            const data = {
+                name: document.getElementById('name').value.trim(),
+                class: document.getElementById('class').value.trim(),
+                dob: document.getElementById('dob').value,
+                studentId: document.getElementById('studentId').value.trim().toUpperCase(),
+                photo: compressedBase64,
+                stars: defaultStars, // Set default stars
+                createdAt: Date.now()
+            };
+
+            loader.style.display = 'flex';
+            try {
+                // Check if studentId already exists
+                const checkSnap = await rootRef.child('Students').child(data.studentId).once('value');
+                if (checkSnap.exists()) {
+                    alert(`Mã số học sinh "${data.studentId}" đã tồn tại trên hệ thống! Vui lòng kiểm tra lại hoặc nhập mã khác.`);
+                    loader.style.display = 'none';
+                    return;
+                }
+
+                await rootRef.child('Students').child(data.studentId).set(data);
+                alert(`Đã thêm học sinh thành công với ${defaultStars} điểm rèn luyện ban đầu!`);
+                studentForm.reset();
+                resetUpload();
+            } catch (err) {
+                alert('Lỗi khi lưu dữ liệu!');
+            } finally {
+                loader.style.display = 'none';
+            }
+        });
+
+        // Compression Logic targeted at 5kB
+        async function compressImage(file) {
+            const img = await loadImage(file);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            let width = img.width;
+            let height = img.height;
+            const MAX_DIM = 300; // Small resolution for 5kb target
+            
+            if (width > MAX_DIM || height > MAX_DIM) {
+                if (width > height) { height *= MAX_DIM / width; width = MAX_DIM; }
+                else { width *= MAX_DIM / height; height = MAX_DIM; }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+
+            let quality = 0.6;
+            let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+            
+            // Iteratively reduce quality
+            while (blob.size > 5 * 1024 && quality > 0.05) {
+                quality -= 0.05;
+                blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+            }
+
+            // If still too large, reduce dimensions further
+            let scale = 0.8;
+            while (blob.size > 5 * 1024 && scale > 0.2) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas.width * scale;
+                tempCanvas.height = canvas.height * scale;
+                tempCanvas.getContext('2d').drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+                blob = await new Promise(r => tempCanvas.toBlob(r, 'image/jpeg', 0.3));
+                scale -= 0.1;
+            }
+            return blob;
+        }
+
+        function loadImage(file) {
+            return new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => { const i = new Image(); i.onload = () => res(i); i.src = e.target.result; };
+                r.readAsDataURL(file);
+            });
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((res) => {
+                const r = new FileReader();
+                r.onloadend = () => res(r.result);
+                r.readAsDataURL(blob);
+            });
+        }
+
+        function logout() { sessionStorage.clear(); window.location.href = '../index.html'; }
+
+        // Load Classes for dropdown
+        rootRef.child('Classes').on('value', snap => {
+            const classSelect = document.getElementById('class');
+            classSelect.innerHTML = '<option value="">-- Chọn lớp --</option>';
+            if (snap.exists()) {
+                snap.forEach(child => {
+                    const opt = document.createElement('option');
+                    opt.value = child.key;
+                    opt.textContent = child.key;
+                    classSelect.appendChild(opt);
+                });
+            } else {
+                classSelect.innerHTML = '<option value="">Chưa có lớp nào (Liên hệ Admin 1)</option>';
+            }
+        });
+    </script>
+</body>
+</html>

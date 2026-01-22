@@ -1,0 +1,53 @@
+name: Obfuscate and Deploy
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Install Tools
+        # Cài đặt cả công cụ làm rối JS và nén HTML
+        run: |
+          npm install -g javascript-obfuscator
+          npm install -g html-minifier
+
+      - name: Prepare dist folder
+        run: |
+          mkdir -p dist
+          mkdir -p "dist/Diemdanh" "dist/Kyluat" "dist/Sinhhoatdoan" "dist/Sinhhoathe"
+
+      - name: Obfuscate ALL JS files
+        # Mã hóa toàn bộ file .js vào thư mục dist
+        run: |
+          javascript-obfuscator ./ --output ./dist --compact true --self-defending true --string-array true --string-array-encoding 'base64' --string-array-threshold 1
+
+      - name: Minify HTML files
+        # Tìm tất cả file .html và nén chúng vào thư mục dist tương ứng
+        run: |
+          find ./ -maxdepth 2 -name "*.html" -not -path "./dist/*" -exec sh -c 'html-minifier --collapse-whitespace --remove-comments --minify-js true --minify-css true "$1" -o "./dist/$1"' _ {} \;
+
+      - name: Copy other static files (CSS, Images, CNAME)
+        # Copy các tài nguyên còn lại, loại trừ JS (đã làm rối) và HTML (đã nén)
+        run: |
+          cp CNAME ./dist/ || true
+          rsync -av --exclude='*.js' --exclude='*.html' Diemdanh/ dist/Diemdanh/ || true
+          rsync -av --exclude='*.js' --exclude='*.html' Kyluat/ dist/Kyluat/ || true
+          rsync -av --exclude='*.js' --exclude='*.html' Sinhhoatdoan/ dist/Sinhhoatdoan/ || true
+          rsync -av --exclude='*.js' --exclude='*.html' Sinhhoathe/ dist/Sinhhoathe/ || true
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
