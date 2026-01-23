@@ -185,17 +185,21 @@
             }
             
             // 2. Fetch latest dynamic data
+            // 2. Fetch latest dynamic data
             const snap = await rootRef.child('Students').child(id).once('value');
             
-            if (snap.exists() || staticData) {
-                const firebaseData = snap.val() || {};
+            // STRICT CHECK: Student must exist in Firebase
+            if (snap.exists()) {
+                const firebaseData = snap.val();
                 
-                // Merge
+                // Use Static Photo ONLY if Firebase doesn't have one
+                const finalPhoto = firebaseData.photo || (staticData ? staticData.photo : "");
+                
                 currentStudent = { 
                     studentId: id,
-                    name: firebaseData.name || (staticData ? staticData.name : ""),
-                    class: firebaseData.class || (staticData ? staticData.class : ""),
-                    photo: firebaseData.photo || (staticData ? staticData.photo : ""),
+                    name: firebaseData.name,
+                    class: firebaseData.class,
+                    photo: finalPhoto,
                     stars: firebaseData.stars || 0
                 };
                 

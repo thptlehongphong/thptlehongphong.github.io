@@ -662,43 +662,45 @@
                 console.error("STATIC_STUDENTS not found! Please ensure student_data.js is loaded.");
             }
 
-            // STEP 2: Listen for specific updates from Firebase (Lightweight)
-            // We still listen to 'Students' but we MERGE data instead of replacing.
-            // This ensures photos (heavy) stay from static file, but valid stars/names update.
+            // STEP 2: Strict Sync with Firebase (Source of Truth)
             rootRef.child('Students').on('value', snap => {
                 const firebaseData = snap.val() || {};
                 
-                // Update existing students or add new ones (if any)
-                let hasChanges = false;
-                
-                // Create a map for fast lookup
-                const studentMap = new Map(allStudents.map(s => [s.id, s]));
+                // Create lookup map for Static Photos
+                const staticMap = new Map();
+                if (typeof STATIC_STUDENTS !== 'undefined') {
+                    STATIC_STUDENTS.forEach(s => staticMap.set(s.id, s));
+                }
 
+                const newList = [];
+                let hasChanges = false;
+
+                // Loop ONLY through Firebase Data (The master list)
                 Object.entries(firebaseData).forEach(([key, val]) => {
-                    if (studentMap.has(key)) {
-                        const s = studentMap.get(key);
-                        // Update only dynamic fields: stars, name, class
-                        // PRESERVE s.photo from static file (unless firebase has a new photo url that isn't base64, but we assume static is source of truth for base64)
-                        if (s.stars !== val.stars || s.name !== val.name || s.class !== val.class) {
-                            s.stars = val.stars;
-                            s.name = val.name;
-                            s.class = val.class;
-                            hasChanges = true;
-                        }
-                    } else {
-                        // New student not in static file? Add them (Full load for them)
-                        // This handles new students added after static export.
-                        allStudents.push({ id: key, ...val });
-                        hasChanges = true;
-                    }
+                    // Try to find static backup
+                    const staticBackup = staticMap.get(key);
+                    
+                    // Logic: Use Firebase Name/Class/Stars. Use Static Photo if Firebase has none.
+                    const finalPhoto = val.photo || (staticBackup ? staticBackup.photo : "");
+                    
+                    newList.push({
+                        id: key,
+                        name: val.name,
+                        class: val.class,
+                        stars: val.stars,
+                        photo: finalPhoto
+                    });
                 });
 
-                if (hasChanges || allStudents.length === 0) {
-                     document.getElementById('studentCount').textContent = allStudents.length;
-                     renderStudentLeaderboard();
-                     renderClassLeaderboard();
-                     if (allViolations.length > 0) renderTable();
-                }
+                // Update global list
+                // Check if changed to avoid unnecessary renders?
+                // For simplicity/safety with deletions, just update.
+                allStudents = newList;
+                
+                document.getElementById('studentCount').textContent = allStudents.length;
+                renderStudentLeaderboard();
+                renderClassLeaderboard();
+                if (allViolations.length > 0) renderTable();
             });
 
             // Fetch Violations
@@ -724,8 +726,18 @@
             const typeQ = document.getElementById('filterType').value;
 
             filteredViolations = allViolations.filter(v => {
-                const matchesName = v.studentName.toLowerCase().includes(nameQ) || 
-                                   v.studentClass.toLowerCase().includes(nameQ) || 
+
+                // Get real-time info for search
+                const student = allStudents.find(s => s.id === v.studentId);
+                
+                // ORPHAN CHECK: If student deletes, hide violation
+                if (!student) return false;
+
+                const currentName = student.name;
+                const currentClass = student.class;
+                
+                const matchesName = currentName.toLowerCase().includes(nameQ) || 
+                                   currentClass.toLowerCase().includes(nameQ) || 
                                    (v.studentId && v.studentId.toLowerCase().includes(nameQ));
                 const matchesType = typeQ === "" ? true : v.violationType.includes(typeQ);
                 return matchesName && matchesType;
@@ -747,9 +759,11 @@
                 const isLong = item.violationType.length > 25;
                 const displayText = isLong ? item.violationType.substring(0, 25) + '...' : item.violationType;
                 
-                // Get real-time info from allStudents for latest class and stars
+                // Get real-time info from allStudents for latest NAME, CLASS, PHOTO and STARS
                 const student = allStudents.find(s => s.id === item.studentId);
+                const currentName = student ? student.name : item.studentName;
                 const currentClass = student ? student.class : item.studentClass;
+                const currentPhoto = student ? student.photo : item.studentPhoto;
                 const stars = student ? (student.stars || 0) : 0;
                 const starColor = stars <= -10 ? 'danger-text' : (stars >= 10 ? '#10b981' : '#f59e0b');
 
@@ -759,11 +773,11 @@
                     <td>
                         <div class="student-info">
                             <div style="position: relative;">
-                                <img src="${item.studentPhoto}" class="student-img" onclick="showImg('${item.studentPhoto}')">
+                                <img src="${currentPhoto}" class="student-img" onclick="showImg('${currentPhoto}')">
                                 ${isMerit ? '<div style="position:absolute; bottom:-3px; right:-3px; background:#10b981; border-radius:50%; width:14px; height:14px; border:2px solid #0f172a;"></div>' : ''}
                             </div>
                             <div>
-                                <p style="font-weight:700; font-size:0.9rem; color:#f8fafc;">${item.studentName}</p>
+                                <p style="font-weight:700; font-size:0.9rem; color:#f8fafc;">${currentName}</p>
                                 <p style="font-size:0.7rem; color:#64748b; letter-spacing:0.5px; font-weight:600;">ID: ${item.studentId || 'N/A'}</p>
                             </div>
                         </div>

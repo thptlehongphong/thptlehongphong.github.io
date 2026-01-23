@@ -275,27 +275,49 @@
                     });
                 }
 
-                const students = [];
+                const newStudents = [];
+                const oldStudents = [];
+                
                 snap.forEach(s => {
                     const data = s.val();
                     
-                    // 2. Logic to determine which Photo to use:
-                    // Priority 1: Photo from Firebase (If exists, means it's new or updated)
-                    // Priority 2: Photo from Static Backup (If exists)
-                    // Priority 3: Empty string
-                    let finalPhoto = data.photo || "";
-                    
-                    if (!finalPhoto && staticPhotoMap[s.key]) {
-                        finalPhoto = staticPhotoMap[s.key]; // Restore old photo
+                    // Logic to determine which Photo to use:
+                    let finalPhoto = ""; 
+                    let isNewOrUpdated = false;
+
+                    if (data.photo) {
+                         // HAS photo on Firebase -> New or Updated
+                         finalPhoto = data.photo;
+                         isNewOrUpdated = true;
+                    } else if (staticPhotoMap[s.key]) {
+                         // NO photo on Firebase but HAS in Static -> Restored Old
+                         finalPhoto = staticPhotoMap[s.key];
+                    } else {
+                         // Check if this student ID is completely new (not in static map at all)
+                         // If not in static map and no photo, it's a new student without photo.
+                         if (!staticPhotoMap.hasOwnProperty(s.key)) isNewOrUpdated = true;
                     }
 
-                    students.push({
+                    const sObj = {
                         id: s.key,
                         name: data.name,
                         class: data.class,
                         photo: finalPhoto
-                    });
+                    };
+
+                    if (isNewOrUpdated) {
+                        newStudents.push(sObj);
+                    } else {
+                        oldStudents.push(sObj);
+                    }
                 });
+
+                // Merge: Newest on top
+                const students = [...newStudents, ...oldStudents];
+                
+                if (newStudents.length > 0) {
+                     alert(`Phát hiện ${newStudents.length} học sinh có dữ liệu MỚI trên Firebase (Đã được đưa lên đầu danh sách).`);
+                }
 
                 const jsContent = `// Dữ liệu học sinh tĩnh (Được xuất từ Admin 0)\n// Cập nhật lúc: ${new Date().toLocaleString()}\n\nconst STATIC_STUDENTS = ${JSON.stringify(students, null, 2)};`;
                 

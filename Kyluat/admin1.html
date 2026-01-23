@@ -411,8 +411,8 @@
                     </select>
                 </div>
                 <div style="margin-bottom: 25px;">
-                    <label style="font-size: 0.8rem; color: #94a3b8;">Mã số học sinh (MSHS) - <span style="color:#ef4444; font-style:italic;">Cẩn trọng khi sửa</span></label>
-                    <input type="text" id="editIdVal"> 
+                    <label style="font-size: 0.8rem; color: #94a3b8;">Mã số học sinh (MSHS) - <span style="color:#ef4444; font-style:italic;">Không thể sửa</span></label>
+                    <input type="text" id="editIdVal" disabled style="opacity: 0.6; cursor: not-allowed; background: rgba(255,255,255,0.05);"> 
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button type="submit" class="btn btn-primary">Lưu</button>
@@ -698,45 +698,34 @@
                 renderStudentTable(); 
             }
 
-            // STEP 2: Fetch Students Updates (Merge)
+            // STEP 2: Fetch Students Updates (Strict Sync)
             rootRef.child('Students').on('value', snap => {
                 const firebaseData = snap.val() || {};
-                let hasChanges = false;
                 
-                // If initial static load failed or empty, fallback to full load behavior essentially
-                if (allStudents.length === 0) {
-                     // Just load everything
-                     Object.entries(firebaseData).forEach(([key, val]) => {
-                         allStudents.push({ id: key, ...val });
-                     });
-                     hasChanges = true;
-                } else {
-                    const studentMap = new Map(allStudents.map(s => [s.id, s]));
-
-                    Object.entries(firebaseData).forEach(([key, val]) => {
-                        if (studentMap.has(key)) {
-                            const s = studentMap.get(key);
-                            // Update dynamic fields but PRESERVE photo from static
-                            // Using a check to avoid unnecessary re-renders if nothing changed
-                            if (s.stars !== val.stars || s.name !== val.name || s.class !== val.class) {
-                                s.stars = val.stars;
-                                s.name = val.name;
-                                s.class = val.class;
-                                hasChanges = true;
-                            }
-                        } else {
-                            // New student (not in static)
-                            allStudents.push({ id: key, ...val });
-                            hasChanges = true;
-                        }
-                    });
-                     
-                    // Optional: Handle deletions if needed (existing in static but not in firebase)
-                    // const firebaseIds = new Set(Object.keys(firebaseData));
-                    // allStudents = allStudents.filter(s => firebaseIds.has(s.id));
+                // Static Backup Map
+                const staticMap = new Map();
+                if (typeof STATIC_STUDENTS !== 'undefined') {
+                    STATIC_STUDENTS.forEach(s => staticMap.set(s.id, s));
                 }
-                
-                if (hasChanges || allStudents.length === 0) renderStudentTable();
+
+                const newList = [];
+
+                // Rebuild list from Firebase source
+                Object.entries(firebaseData).forEach(([key, val]) => {
+                    const staticBackup = staticMap.get(key);
+                    const finalPhoto = val.photo || (staticBackup ? staticBackup.photo : "");
+                    
+                    newList.push({
+                         id: key,
+                         name: val.name,
+                         class: val.class,
+                         stars: val.stars,
+                         photo: finalPhoto
+                    });
+                });
+
+                allStudents = newList;
+                renderStudentTable();
             });
 
             // Fetch Violations
@@ -802,10 +791,18 @@
             tbody.innerHTML = '';
 
             const query = (document.getElementById('searchViolation').value || '').toLowerCase();
-            const filtered = allViolations.filter(v => 
-                v.violationType.toLowerCase().includes(query) ||
-                (v.studentName && v.studentName.toLowerCase().includes(query))
-            );
+            const filtered = allViolations.filter(v => {
+                // Get real-time info
+                const s = allStudents.find(x => x.id === v.studentId);
+                
+                // ORPHAN CHECK: If student deletes, hide violation
+                if (!s) return false;
+
+                const currentName = s.name;
+                
+                return v.violationType.toLowerCase().includes(query) ||
+                       (currentName && currentName.toLowerCase().includes(query));
+            });
 
             renderPaginationHTML('violationPagination', filtered.length, currentViolationPage, (p) => {
                 currentViolationPage = p;
@@ -819,9 +816,15 @@
             data.forEach(v => {
                 const tr = document.createElement('tr');
                 const isMerit = v.violationType.includes('Khen thưởng');
+                
+                // Get real-time info
+                const s = allStudents.find(x => x.id === v.studentId);
+                const currentName = s ? s.name : v.studentName;
+                const currentClass = s ? s.class : v.studentClass;
+
                 tr.innerHTML = `
                     <td>
-                        <div style="font-weight:600; font-size:0.9rem;">${v.studentName} <span style="font-weight:400; color:#94a3b8; font-size:0.75rem;">(${v.studentClass})</span></div>
+                        <div style="font-weight:600; font-size:0.9rem;">${currentName} <span style="font-weight:400; color:#94a3b8; font-size:0.75rem;">(${currentClass})</span></div>
                         <div style="font-size:0.7rem; color:#64748b;">${new Date(v.timestamp).toLocaleString('vi-VN')}</div>
                     </td>
                     <td>
@@ -989,13 +992,20 @@
             if (!allViolations || allViolations.length === 0) return alert('Không có dữ liệu vi phạm để xuất!');
             
             // 1. Format Data
-            const dataToExport = allViolations.map(v => ({
-                'Thời gian': new Date(v.timestamp).toLocaleString('vi-VN'),
-                'Họ và Tên': v.studentName,
-                'Lớp': v.studentClass,
-                'Nội dung': v.violationType,
-                'Biến động điểm': (v.violationType.includes('Khen thưởng') ? '+' : '-') + (v.totalPoints || 0)
-            }));
+            const dataToExport = allViolations.map(v => {
+                 // Get real-time info
+                 const s = allStudents.find(x => x.id === v.studentId);
+                 const currentName = s ? s.name : v.studentName;
+                 const currentClass = s ? s.class : v.studentClass;
+                 
+                 return {
+                    'Thời gian': new Date(v.timestamp).toLocaleString('vi-VN'),
+                    'Họ và Tên': currentName,
+                    'Lớp': currentClass,
+                    'Nội dung': v.violationType,
+                    'Biến động điểm': (v.violationType.includes('Khen thưởng') ? '+' : '-') + (v.totalPoints || 0)
+                 };
+            });
 
             // 2. Create Worksheet
             const ws = XLSX.utils.json_to_sheet(dataToExport);

@@ -187,24 +187,28 @@
             }
 
             // 2. Fetch latest dynamic data from Firebase
+            // 2. Fetch latest dynamic data from Firebase
             const snap = await rootRef.child('Students').child(id).once('value');
             
-            if (snap.exists() || staticData) {
-                const firebaseData = snap.val() || {};
+            // STRICT CHECK: Student must exist in Firebase (Source of Truth)
+            if (snap.exists()) {
+                const firebaseData = snap.val();
                 
-                // Merge Data (Firebase takes precedence for dynamic fields, Static for Photo if missing)
+                // Use Static Photo ONLY if Firebase doesn't have one
+                const finalPhoto = firebaseData.photo || (staticData ? staticData.photo : "");
+                
                 currentStudent = { 
                     studentId: id,
-                    name: firebaseData.name || (staticData ? staticData.name : ""),
-                    class: firebaseData.class || (staticData ? staticData.class : ""),
-                    dob: firebaseData.dob || (staticData ? staticData.dob : ""), // Assuming DOB might be in static too if exported
-                    photo: firebaseData.photo || (staticData ? staticData.photo : ""),
+                    name: firebaseData.name,
+                    class: firebaseData.class,
+                    dob: firebaseData.dob, 
+                    photo: finalPhoto,
                     stars: firebaseData.stars || 0
                 };
 
                 document.getElementById('resImg').src = currentStudent.photo;
                 document.getElementById('resName').textContent = currentStudent.name;
-                document.getElementById('resInfo').textContent = `Lớp: ${currentStudent.class}`; // Removed DOB display to keep it simple as static might not have DOB
+                document.getElementById('resInfo').textContent = `Lớp: ${currentStudent.class}`;
                 
                 document.getElementById('studentResult').style.display = 'block';
                 document.getElementById('noMatch').style.display = 'none';
