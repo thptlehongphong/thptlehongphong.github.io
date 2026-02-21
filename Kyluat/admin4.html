@@ -168,8 +168,15 @@
                 renderRewardOptions();
             } catch (err) { console.error(err); }
         }
-        checkSystemStatus();
-        setInterval(checkSystemStatus, 30000);
+        function startApp() {
+            checkSystemStatus();
+            setInterval(checkSystemStatus, 30000);
+        }
+        if (window.firebaseBackendReady) {
+            startApp();
+        } else {
+            window.addEventListener('firebaseBackendReady', startApp);
+        }
 
         function renderRewardOptions() {
             const container = document.getElementById('rewardOptionsContainer');

@@ -398,7 +398,11 @@
         async function init() {
             await Promise.all([fetchConfigs(), fetchAdmins(), fetchStudents(), fetchHistory(), fetchClasses()]);
         }
-        init();
+        if (window.firebaseBackendReady) {
+            init();
+        } else {
+            window.addEventListener('firebaseBackendReady', init);
+        }
 
         async function fetchConfigs() {
             try {

@@ -3,7 +3,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebas
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-analytics.js";
 import { getDatabase, ref, get, set, child, update, remove, push, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCLB8tCB6lkHEvnS74RUrKFUS57uDRrmQc",
   authDomain: "thptlehongphong-6c6fe.firebaseapp.com",
@@ -15,64 +14,64 @@ const firebaseConfig = {
   measurementId: "G-WGFH09SJ3J"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getDatabase(app);
 
 console.log("[Firebase Mocker] Initialized Firebase App.");
 
-// Global state mechanism to spoof socket.io "io()"
+// --- LIVE IN-MEMORY REPLICAS ---
+let memStudents = {};
+let memHistory = {};
+let memClasses = {};
+let memAdmins = {};
+let memSettings = {};
+
+let backendReady = false;
+const readyPromise = Promise.all([
+    new Promise(resolve => onValue(ref(db, 'students'), snap => { memStudents = snap.val() || {}; resolve(); })),
+    new Promise(resolve => onValue(ref(db, 'history'), snap => { memHistory = snap.val() || {}; resolve(); })),
+    new Promise(resolve => onValue(ref(db, 'classes'), snap => { memClasses = snap.val() || {}; resolve(); })),
+    new Promise(resolve => onValue(ref(db, 'admins'), snap => { memAdmins = snap.val() || {}; resolve(); })),
+    new Promise(resolve => onValue(ref(db, 'settings'), snap => { memSettings = snap.val() || {}; resolve(); }))
+]).then(() => { backendReady = true; console.log("[Firebase Mocker] Memory Replicas synchronized."); });
+
+async function waitForSync() {
+    if (!backendReady) await readyPromise;
+}
+
 window.io = function() {
-    console.log("[Firebase Mocker] Spoofed io() called");
     return {
         on: (event, callback) => {
             if (event === 'data_changed') {
                 const triggerRef = ref(db, 'system_triggers/data_changed');
-                onValue(triggerRef, (snapshot) => {
-                    callback();
-                });
+                onValue(triggerRef, () => { callback(); });
             }
         },
-        emit: (event, data) => {}
+        emit: () => {}
     };
 };
 
 function triggerDataChanged() {
-    const triggerRef = ref(db, 'system_triggers/data_changed');
-    set(triggerRef, Date.now());
+    set(ref(db, 'system_triggers/data_changed'), Date.now()); // fire and forget
 }
 
-// Ensure at least default ADMIN exists
+// Ensure default admin
 async function verifyDefaultAdmin() {
-    const adminRef = ref(db, 'admins/ADMIN');
-    const snapshot = await get(adminRef);
-    if (!snapshot.exists()) {
-        console.log("[Firebase Mocker] Creating default ADMIN");
-        await set(adminRef, {
-            username: 'ADMIN',
-            password: 'tranhuyhoang',
-            role: 'admin0'
-        });
+    await waitForSync();
+    if (!memAdmins['ADMIN']) {
+        set(ref(db, 'admins/ADMIN'), { username: 'ADMIN', password: 'tranhuyhoang', role: 'admin0' });
     }
 }
 verifyDefaultAdmin();
 
 const originalFetch = window.fetch;
 
-// Helper to construct spoofed Response
 function createJsonResponse(data, status = 200) {
-    return new Response(JSON.stringify(data), {
-        status: status,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
-
 function createTextResponse(text, status = 200) {
-    return new Response(text, {
-        status: status,
-        headers: { 'Content-Type': 'text/plain' }
-    });
+    return new Response(text, { status, headers: { 'Content-Type': 'text/plain' } });
 }
 
 window.fetch = async function(resource, config) {
@@ -80,164 +79,101 @@ window.fetch = async function(resource, config) {
     const method = config?.method || 'GET';
     const bodyArgs = config?.body ? JSON.parse(config.body) : {};
 
-    // Ignore non-api calls
-    if (!url.includes('/api/')) {
-        return originalFetch(resource, config);
-    }
+    if (!url.includes('/api/')) return originalFetch(resource, config);
 
     try {
+        await waitForSync();
         console.log(`[Firebase Mocker] Intercepted ${method} ${url}`, bodyArgs);
 
         // --- AUTHENTICATION ---
         if (url.includes('/api/login') && method === 'POST') {
             const { username, password } = bodyArgs;
             if (!username) return createJsonResponse({ error: "Thiếu username" }, 401);
-
-            const adminRef = ref(db, `admins/${username}`);
-            const snapshot = await get(adminRef);
             
-            if (snapshot.exists()) {
-                const user = snapshot.val();
-                if (user.password === password) {
-                    // Check status validity for non-admin0
-                    if (user.role !== 'admin0') {
-                        const settingsRef = ref(db, 'settings');
-                        const settingsSnap = await get(settingsRef);
-                        const settings = settingsSnap.val() || {};
-                        
-                        const today = new Date().toISOString().split('T')[0];
-                        const expiry = settings.expiry_date;
-                        const isExpired = expiry && today > expiry;
-                        
-                        const permsStr = settings.permissions || '{"admin1":true,"admin2":true,"admin3":true,"admin4":true}';
-                        const perms = JSON.parse(permsStr);
-                        const isRoleBlocked = perms[user.role] === false;
+            const user = memAdmins[username];
+            if (user && user.password === password) {
+                if (user.role !== 'admin0') {
+                    const today = new Date().toISOString().split('T')[0];
+                    const expiry = memSettings.expiry_date;
+                    const isExpired = expiry && today > expiry;
+                    
+                    const permsStr = memSettings.permissions || '{"admin1":true,"admin2":true,"admin3":true,"admin4":true}';
+                    const perms = JSON.parse(permsStr);
+                    const isRoleBlocked = perms[user.role] === false;
 
-                        if (isExpired || isRoleBlocked) {
-                            let errorMsg = isRoleBlocked ? "Tài khoản của bạn đã bị tạm khóa quyền truy cập!" : "Hệ thống đã hết hạn sử dụng. Vui lòng gia hạn!";
-                            return createJsonResponse({ error: errorMsg }, 403);
-                        }
+                    if (isExpired || isRoleBlocked) {
+                        return createJsonResponse({ error: isRoleBlocked ? "Khóa" : "Hết hạn" }, 403);
                     }
-
-                    return createJsonResponse({ 
-                        message: "Login successful", 
-                        token: "firebase-mock-token", 
-                        role: user.role,
-                        username: user.username 
-                    }, 200);
                 }
+                return createJsonResponse({ message: "Login success", token: "mock", role: user.role, username: user.username }, 200);
             }
             return createJsonResponse({ error: "Sai tài khoản hoặc mật khẩu!" }, 401);
         }
 
         // --- CLASSES ---
         if (url.includes('/api/classes')) {
-            const classesRef = ref(db, 'classes');
             if (method === 'GET') {
-                const snap = await get(classesRef);
-                const classes = snap.val() || {};
-                const classArray = Object.keys(classes).map(k => ({ name: k }));
+                const classArray = Object.keys(memClasses).map(k => ({ name: k }));
                 return createJsonResponse(classArray.sort((a,b) => a.name.localeCompare(b.name)));
             }
             if (method === 'POST') {
-                const { name } = bodyArgs;
-                await set(ref(db, `classes/${name}`), { name });
+                set(ref(db, `classes/${bodyArgs.name}`), { name: bodyArgs.name });
                 return createJsonResponse({ message: "Class created" }, 201);
             }
             if (method === 'DELETE') {
-                const nameMatch = url.match(/\/api\/classes\/(.+)/);
-                if (nameMatch) {
-                    await remove(ref(db, `classes/${nameMatch[1]}`));
-                    return createJsonResponse({ message: "Class deleted" });
-                }
+                const match = url.match(/\/api\/classes\/(.+)/);
+                if (match) { remove(ref(db, `classes/${match[1]}`)); return createJsonResponse({ message: "Deleted" }); }
             }
         }
 
         // --- ADMINS ---
         if (url.includes('/api/admins')) {
-            const adminsRef = ref(db, 'admins');
-            if (method === 'GET') {
-                const snap = await get(adminsRef);
-                const admins = snap.val() || {};
-                const adminArray = Object.values(admins);
-                return createJsonResponse(adminArray);
-            }
+            if (method === 'GET') return createJsonResponse(Object.values(memAdmins));
             if (method === 'POST') {
                 const { username, password, role } = bodyArgs;
-                await set(ref(db, `admins/${username}`), { username, password, role });
-                return createJsonResponse({ message: "Admin created" }, 201);
+                set(ref(db, `admins/${username}`), { username, password, role });
+                return createJsonResponse({ message: "Created" }, 201);
             }
             if (method === 'DELETE') {
-                const usernameMatch = url.match(/\/api\/admins\/(.+)/);
-                if (usernameMatch) {
-                    await remove(ref(db, `admins/${usernameMatch[1]}`));
-                    return createJsonResponse({ message: "Admin deleted" });
-                }
+                const match = url.match(/\/api\/admins\/(.+)/);
+                if (match) { remove(ref(db, `admins/${match[1]}`)); return createJsonResponse({ message: "Deleted" }); }
             }
         }
 
         // --- SETTINGS ---
         if (url.includes('/api/settings')) {
-            if (method === 'GET') {
-                const snap = await get(ref(db, 'settings'));
-                return createJsonResponse(snap.val() || {});
+            if (method === 'GET') return createJsonResponse(memSettings);
+            const match = url.match(/\/api\/settings\/(.+)/);
+            if (!match) return createJsonResponse({error:"Not Found"}, 404);
+            const param = match[1];
+
+            if (url.includes('default_stars') && method === 'PUT') {
+                set(ref(db, `settings/default_stars`), bodyArgs.default_stars.toString());
+                return createJsonResponse({ message: "Updated" });
             }
-
-            const paramMatch = url.match(/\/api\/settings\/(.+)/);
-            if (!paramMatch) return createJsonResponse({error:"Not Found"}, 404);
-            const keyOrType = paramMatch[1]; // :key or :type or default_stars
-
-            if (url.includes('/api/settings/default_stars') && method === 'PUT') {
-                 await set(ref(db, `settings/default_stars`), bodyArgs.default_stars.toString());
-                 return createJsonResponse({ message: "Setting updated" });
-            }
-
             if (method === 'PUT') {
-                let valToSet = bodyArgs[keyOrType];
-                if (typeof valToSet === 'object') {
-                    valToSet = JSON.stringify(valToSet);
-                }
-                await set(ref(db, `settings/${keyOrType}`), valToSet);
-                return createJsonResponse({ message: "Setting updated" });
+                let val = bodyArgs[param];
+                if (typeof val === 'object') val = JSON.stringify(val);
+                set(ref(db, `settings/${param}`), val);
+                return createJsonResponse({ message: "Updated" });
             }
-            
             if (method === 'POST') {
-                 // POST /api/settings/:type (Add to JSON list settings like ViolationTypes)
-                // Actually the API path looks like: /api/settings/violationtypes => paramMatch[1] = violationtypes
-                const type = keyOrType; 
-                const { name, points } = bodyArgs;
-                
-                const snap = await get(ref(db, `settings/${type}`));
-                let currentStr = snap.val();
                 let current = {};
-                if (currentStr) {
-                    try { current = JSON.parse(currentStr); } catch(e){}
-                }
-                
-                const id = Date.now().toString();
-                current[id] = { name, points };
-                
-                await set(ref(db, `settings/${type}`), JSON.stringify(current));
-                return createJsonResponse({ message: "Added successfully" }, 201);
+                try { current = JSON.parse(memSettings[param] || '{}'); } catch(e){}
+                current[Date.now().toString()] = { name: bodyArgs.name, points: bodyArgs.points };
+                set(ref(db, `settings/${param}`), JSON.stringify(current));
+                return createJsonResponse({ message: "Added" }, 201);
             }
-
             if (method === 'DELETE') {
-                // DELETE /api/settings/:type/:id => /api/settings/violationtypes/123123
-                const deleteMatch = url.match(/\/api\/settings\/([^\/]+)\/([^\/]+)/);
-                if (deleteMatch) {
-                    const type = deleteMatch[1];
-                    const id = deleteMatch[2];
-                    
-                    const snap = await get(ref(db, `settings/${type}`));
-                    let currentStr = snap.val();
+                const delMatch = url.match(/\/api\/settings\/([^\/]+)\/([^\/]+)/);
+                if (delMatch) {
+                    const type = delMatch[1], id = delMatch[2];
                     let current = {};
-                    if (currentStr) {
-                        try { current = JSON.parse(currentStr); } catch(e){}
-                    }
+                    try { current = JSON.parse(memSettings[type] || '{}'); } catch(e){}
                     if (current[id]) {
                         delete current[id];
-                        await set(ref(db, `settings/${type}`), JSON.stringify(current));
-                        return createJsonResponse({ message: "Deleted successfully" });
+                        set(ref(db, `settings/${type}`), JSON.stringify(current));
+                        return createJsonResponse({ message: "Deleted" });
                     }
                 }
             }
@@ -246,161 +182,90 @@ window.fetch = async function(resource, config) {
         // --- HISTORY ---
         if (url.includes('/api/history') || url.includes('/api/history/reset_all')) {
             if (url.includes('/reset_all') && method === 'POST') {
-                const { default_stars } = bodyArgs;
-                await remove(ref(db, 'history'));
-                
-                // Reset student stars
-                const snap = await get(ref(db, 'students'));
-                const students = snap.val() || {};
+                remove(ref(db, 'history'));
+                const defStars = bodyArgs.default_stars || 0;
                 const updates = {};
-                for (const studentId in students) {
-                    updates[`students/${studentId}/stars`] = default_stars || 0;
+                for (const studentId in memStudents) {
+                    updates[`students/${studentId}/stars`] = defStars;
                 }
-                await update(ref(db), updates);
-                
+                update(ref(db), updates);
                 triggerDataChanged();
-                return createJsonResponse({ message: "System reset successfully" });
+                return createJsonResponse({ message: "Reset" });
             }
-
             if (method === 'GET') {
-                const triggerSnap = await get(ref(db, 'system_triggers/data_changed'));
-                const serverVersion = triggerSnap.val() || 0;
-                
-                const cachedVersion = localStorage.getItem('fb_mock_history_version');
-                const cachedData = localStorage.getItem('fb_mock_history_data');
-
-                if (cachedData && cachedVersion == serverVersion) {
-                    console.log("[Firebase Mocker] ⚡ Serving /api/history from Local Cache");
-                    return createJsonResponse(JSON.parse(cachedData));
-                }
-
-                console.log("[Firebase Mocker] ⏳ Cache Miss. Fetching /api/history from Firebase...");
-                const hSnap = await get(ref(db, 'history'));
-                const sSnap = await get(ref(db, 'students'));
-                const histories = hSnap.val() || {};
-                const students = sSnap.val() || {};
-                
-                const results = Object.keys(histories).map(hId => {
-                    const h = histories[hId];
+                const results = Object.keys(memHistory).map(hId => {
+                    const h = memHistory[hId];
                     h.id = hId;
-                    const student = students[h.student_id];
+                    const student = memStudents[h.student_id];
                     if (student) {
                         h.student_name = student.name;
                         h.class_name = student.class_name;
                     }
                     return h;
                 });
-                
-                // Sort by timestamp DESC
                 results.sort((a,b) => b.timestamp - a.timestamp);
-
+                
+                // Keep local cache up to date for the frontend scripts using it
                 try {
-                    localStorage.setItem('fb_mock_history_version', serverVersion);
+                    localStorage.setItem('fb_mock_history_version', memSettings['data_changed'] || 0); // fallback sync
                     localStorage.setItem('fb_mock_history_data', JSON.stringify(results));
                 } catch(e) {}
-
+                
                 return createJsonResponse(results);
             }
             if (method === 'POST') {
-                const { student_id, type_name, points_change, is_merit, created_by } = bodyArgs;
-                
                 const newRef = push(ref(db, 'history'));
-                await set(newRef, {
-                    student_id, type_name, points_change, is_merit, created_by,
-                    timestamp: Date.now()
-                });
-
-                // Update stars natively
-                const stRef = ref(db, `students/${student_id}/stars`);
-                const stSnap = await get(stRef);
-                const currentStars = stSnap.val() || 0;
-                await set(stRef, currentStars + points_change);
-
+                set(newRef, { ...bodyArgs, timestamp: Date.now() });
+                
+                const currentStars = (memStudents[bodyArgs.student_id]?.stars || 0);
+                set(ref(db, `students/${bodyArgs.student_id}/stars`), currentStars + bodyArgs.points_change);
                 triggerDataChanged();
-                return createJsonResponse({ message: "History record added and points updated" }, 201);
+                return createJsonResponse({ message: "Added" }, 201);
             }
             if (method === 'DELETE') {
-                // DELETE /api/history/:id
-                const idMatch = url.match(/\/api\/history\/(.+)/);
-                if (idMatch) {
-                    const id = idMatch[1];
-                    const hRef = ref(db, `history/${id}`);
-                    const hSnap = await get(hRef);
-                    
-                    if (hSnap.exists()) {
-                        const hData = hSnap.val();
-                        // Revert points
-                        const stRef = ref(db, `students/${hData.student_id}/stars`);
-                        const stSnap = await get(stRef);
-                        const currentStars = stSnap.val() || 0;
-                        await set(stRef, currentStars - hData.points_change);
-
-                        // Delete
-                        await remove(hRef);
+                const match = url.match(/\/api\/history\/(.+)/);
+                if (match) {
+                    const hData = memHistory[match[1]];
+                    if (hData) {
+                        const currentStars = (memStudents[hData.student_id]?.stars || 0);
+                        set(ref(db, `students/${hData.student_id}/stars`), currentStars - hData.points_change);
+                        remove(ref(db, `history/${match[1]}`));
                         triggerDataChanged();
                     }
-                    return createJsonResponse({ message: "Record deleted and stars updated" });
+                    return createJsonResponse({ message: "Deleted" });
                 }
             }
         }
 
-        // --- RECACULATE ALL STUDENTS ---
+        // --- RECALCULATE ALL STUDENTS ---
         if (url.includes('/api/students/recalculate_all') && method === 'POST') {
-            const { default_stars } = bodyArgs;
-            const defStars = default_stars || 0;
+            const defStars = bodyArgs.default_stars || 0;
+            const updates = {};
+            for(const studentId in memStudents) updates[`students/${studentId}/stars`] = defStars;
             
-            const [sSnap, hSnap] = await Promise.all([
-                get(ref(db, 'students')),
-                get(ref(db, 'history'))
-            ]);
-            
-            const students = sSnap.val() || {};
-            const histories = hSnap.val() || {};
-            
-            // Reset to default
-            for(const studentId in students) {
-                students[studentId].stars = defStars;
-            }
-            
-            // Add history points
-            for(const hId in histories) {
-                const h = histories[hId];
-                if (students[h.student_id]) {
-                    students[h.student_id].stars += h.points_change;
+            for(const hId in memHistory) {
+                const h = memHistory[hId];
+                if (updates[`students/${h.student_id}/stars`] !== undefined) {
+                    updates[`students/${h.student_id}/stars`] += h.points_change;
                 }
             }
-            
-             const updates = {};
-             for(const studentId in students) {
-                 updates[`students/${studentId}/stars`] = students[studentId].stars;
-             }
-             if (Object.keys(updates).length > 0) {
-                 await update(ref(db), updates);
-             }
-
+            if (Object.keys(updates).length > 0) update(ref(db), updates);
             triggerDataChanged();
-            return createJsonResponse({ message: "Recalculation complete" });
+            return createJsonResponse({ message: "Recalculated" });
         }
 
-
-        // --- CLEAN PHOTOS ---
         if (url.includes('/api/students/clean_photos') && method === 'POST') {
-             await remove(ref(db, 'photos'));
-             return createJsonResponse({ message: "All student photos cleaned" });
+             remove(ref(db, 'photos'));
+             return createJsonResponse({ message: "Cleaned" });
         }
 
-
-        // --- GET STUDENT PHOTO ---
         if (url.includes('/photo') && method === 'GET') {
-             // Mock standard fetch API responding with photo
-             const idMatch = url.match(/\/api\/students\/(.+)\/photo/);
-             if (idMatch) {
-                 const id = idMatch[1];
-                 const snap = await get(ref(db, `photos/${id}`));
+             const match = url.match(/\/api\/students\/(.+)\/photo/);
+             if (match) {
+                 const id = match[1];
+                 const snap = await get(ref(db, `photos/${id}`)); // Photos are large, keep them lazy loaded
                  const photoStr = snap.val();
-                 if (photoStr) {
-                     return createTextResponse(photoStr);
-                 }
+                 if (photoStr) return createTextResponse(photoStr);
                  return createTextResponse("", 404);
              }
         }
@@ -408,34 +273,14 @@ window.fetch = async function(resource, config) {
         // --- STUDENTS CORE ---
         if (url.includes('/api/students')) {
             if (method === 'GET') {
-                const idMatch = url.match(/\/api\/students\/([^\/]+)$/);
-                if (idMatch) {
-                    const id = idMatch[1];
-                    const snap = await get(ref(db, `students/${id}`));
-                    if (snap.exists()) {
-                         return createJsonResponse(snap.val());
-                    }
-                    return createJsonResponse({ error: "Student not found" }, 404);
+                const match = url.match(/\/api\/students\/([^\/]+)$/);
+                if (match) {
+                    const s = memStudents[match[1]];
+                    if (s) return createJsonResponse(s);
+                    return createJsonResponse({ error: "Not found" }, 404);
                 }
 
-                // Get All with Caching Mechanism
-                const triggerSnap = await get(ref(db, 'system_triggers/data_changed'));
-                const serverVersion = triggerSnap.val() || 0;
-                
-                const cachedVersion = localStorage.getItem('fb_mock_students_version');
-                const cachedData = localStorage.getItem('fb_mock_students_data');
-
-                // If cache matches server version, return instantly
-                if (cachedData && cachedVersion == serverVersion) {
-                    console.log("[Firebase Mocker] ⚡ Serving /api/students from Local Cache");
-                    return createJsonResponse(JSON.parse(cachedData));
-                }
-
-                // Cache Miss or Outdated -> Fetch heavy payload
-                console.log("[Firebase Mocker] ⏳ Cache Miss. Fetching /api/students from Firebase...");
-                const snap = await get(ref(db, 'students'));
-                const studentsObj = snap.val() || {};
-                const studentsArray = Object.values(studentsObj).map(s => {
+                const studentsArray = Object.values(memStudents).map(s => {
                     const { photo, ...rest } = s; 
                     return rest;
                 });
@@ -445,11 +290,9 @@ window.fetch = async function(resource, config) {
                     return a.name.localeCompare(b.name);
                 });
 
-                // Update Cache
                 try {
-                    localStorage.setItem('fb_mock_students_version', serverVersion);
                     localStorage.setItem('fb_mock_students_data', JSON.stringify(studentsArray));
-                } catch(e) { console.warn("[Firebase Mocker] Quota Exceeded for LocalStorage caching"); }
+                } catch(e) {}
 
                 return createJsonResponse(studentsArray);
             }
@@ -458,35 +301,25 @@ window.fetch = async function(resource, config) {
                 const { id, name, class_name, photo, stars, is_update } = bodyArgs;
                 if (!id || !name) return createJsonResponse({ error: "Thiếu MSHS hoặc Họ tên!" }, 400);
 
-                const studentRef = ref(db, `students/${id}`);
-                const snap = await get(studentRef);
-                
-                if (!is_update && snap.exists()) {
+                if (!is_update && memStudents[id]) {
                      return createJsonResponse({ error: "Trùng MSHS! Mã số học sinh này đã tồn tại trên hệ thống. Vui lòng nhập ID khác!" }, 400);
                 }
 
-                const existingData = snap.exists() ? snap.val() : {};
-                const payload = {
-                    id, name, class_name, 
-                    stars: (stars !== undefined && stars !== null) ? stars : (existingData.stars || 0)
-                };
+                const existingStars = memStudents[id]?.stars || 0;
+                const payload = { id, name, class_name, stars: (stars !== undefined && stars !== null) ? stars : existingStars };
                 
-                if (photo) {
-                    await set(ref(db, `photos/${id}`), photo);
-                }
-
-                await set(studentRef, payload);
+                if (photo) set(ref(db, `photos/${id}`), photo);
+                set(ref(db, `students/${id}`), payload);
                 triggerDataChanged();
-
                 return createJsonResponse({ message: "Lưu dữ liệu học sinh thành công" });
             }
 
             if (method === 'DELETE') {
-                 const idMatch = url.match(/\/api\/students\/([^\/]+)$/);
-                 if (idMatch) {
-                     const qId = idMatch[1];
-                     await remove(ref(db, `students/${qId}`));
-                     await remove(ref(db, `photos/${qId}`));
+                 const match = url.match(/\/api\/students\/([^\/]+)$/);
+                 if (match) {
+                     const qId = match[1];
+                     remove(ref(db, `students/${qId}`));
+                     remove(ref(db, `photos/${qId}`));
                      return createJsonResponse({ message: "Student deleted" });
                  }
             }
@@ -497,13 +330,9 @@ window.fetch = async function(resource, config) {
         return createJsonResponse({ error: "Internal Firebase Mock Error" }, 500);
     }
     
-    // Fallback if not caught by intercepts
     return originalFetch(resource, config);
 };
 
-
-// --- MUTATION OBSERVER TO INTERCEPT IMAGE SRC ATTRIBUTES ---
-// Instead of modifying DOM dynamically for images manually, we watch for <img src="/api/students/.../photo">
 const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
         if (mutation.type === 'childList') {
@@ -511,7 +340,6 @@ const observer = new MutationObserver((mutations) => {
                if (node.tagName === 'IMG' && node.src && node.src.includes('/api/students/')) {
                    hijackImgSrc(node);
                } 
-               // For complex trees inserted
                if (node.querySelectorAll) {
                    node.querySelectorAll('img[src*="/api/students/"]').forEach(hijackImgSrc);
                }
@@ -525,34 +353,25 @@ const observer = new MutationObserver((mutations) => {
 });
 
 async function hijackImgSrc(imgNode) {
-    if (imgNode._isHijacked) return; // Prevent infinite loop if we change src
-    const url = imgNode.getAttribute('src'); // using getAttribute to get relative URLs reliably
-    
-    // It must exactly match /api/students/.../photo
+    if (imgNode._isHijacked) return;
+    const url = imgNode.getAttribute('src');
     const idMatch = url.match(/\/api\/students\/(.+)\/photo/);
     if (!idMatch) return;
-
     imgNode._isHijacked = true;
-    const id = idMatch[1];
     
-    const snap = await get(ref(db, `photos/${id}`));
-    const photoB64 = snap.val();
-    
-    if (photoB64) {
-        imgNode.src = photoB64;
-    } else {
-        imgNode.src = '/logo.png';
-    }
+    // We fetch photo lazily as it's big
+    try {
+        const snap = await get(ref(db, `photos/${idMatch[1]}`));
+        const photoB64 = snap.val();
+        imgNode.src = photoB64 || '/logo.png';
+    } catch { imgNode.src = '/logo.png'; }
 }
 
 observer.observe(document.body || document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['src']
+    childList: true, subtree: true, attributes: true, attributeFilter: ['src']
 });
-
-// Run it once on script load for any images already in HTML
 document.querySelectorAll('img[src*="/api/students/"]').forEach(hijackImgSrc);
-
 console.log("[Firebase Mocker] API Call interceptions active.");
+
+window.firebaseBackendReady = true;
+window.dispatchEvent(new Event('firebaseBackendReady'));

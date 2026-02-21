@@ -196,7 +196,11 @@
             await fetchAdmins();
             await fetchSettings();
         }
-        initData();
+        if (window.firebaseBackendReady) {
+            initData();
+        } else {
+            window.addEventListener('firebaseBackendReady', initData);
+        }
 
         async function fetchAdmins() {
             try {

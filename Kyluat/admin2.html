@@ -187,8 +187,15 @@
                 });
             } catch (err) { console.error(err); }
         }
-        checkSystemStatus();
-        setInterval(checkSystemStatus, 30000);
+        function startApp() {
+            checkSystemStatus();
+            setInterval(checkSystemStatus, 30000);
+        }
+        if (window.firebaseBackendReady) {
+            startApp();
+        } else {
+            window.addEventListener('firebaseBackendReady', startApp);
+        }
 
         const fileCapture = document.getElementById('fileCapture');
         const fileBrowse = document.getElementById('fileBrowse');

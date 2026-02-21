@@ -891,7 +891,7 @@
             populateGradeFilter();
             renderStudentLeaderboard();
             renderClassLeaderboard();
-            if (allViolations.length > 0) renderTable();
+            renderTable();
         }
 
         function populateGradeFilter() {
@@ -1009,6 +1009,13 @@
 
         function renderTable() {
             tableBody.innerHTML = '';
+            
+            if (filteredViolations.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 30px; color: #94a3b8;">Hiện tại chưa có dữ liệu vi phạm/khen thưởng nào phù hợp với bộ lọc.</td></tr>`;
+                document.getElementById('violationPagination').innerHTML = '';
+                return;
+            }
+
             const start = (violationPage - 1) * pageSize;
             const end = start + pageSize;
             const data = filteredViolations.slice(start, end);
@@ -1075,6 +1082,13 @@
             }
 
             studentRankGrid.innerHTML = '';
+            
+            if (list.length === 0) {
+                studentRankGrid.innerHTML = `<div style="text-align: center; padding: 30px; color: #94a3b8; width: 100%;">Không tìm thấy học sinh nào phù hợp.</div>`;
+                document.getElementById('studentRankPagination').innerHTML = '';
+                return;
+            }
+
             const start = (studentRankPage - 1) * pageSize;
             const end = start + pageSize;
             const pagedList = list.slice(start, end);
@@ -1127,6 +1141,13 @@
             })).sort((a, b) => b.avg - a.avg);
 
             classRankGrid.innerHTML = '';
+            
+            if (classAvgList.length === 0) {
+                classRankGrid.innerHTML = `<div style="text-align: center; padding: 30px; color: #94a3b8; width: 100%;">Không có dữ liệu xếp hạng lớp.</div>`;
+                document.getElementById('classRankPagination').innerHTML = '';
+                return;
+            }
+
             const start = (classRankPage - 1) * pageSize;
             const end = start + pageSize;
             const pagedList = classAvgList.slice(start, end);
@@ -1293,10 +1314,18 @@
             }
         });
 
-        initData();
-        checkSystemStatus();
-        setInterval(initData, 30000); // Pulse check every 30s
-        setInterval(checkSystemStatus, 60000); // Check lock/expiry every 1m
+        function startApp() {
+            initData();
+            checkSystemStatus();
+            setInterval(initData, 30000); // Pulse check every 30s
+            setInterval(checkSystemStatus, 60000); // Check lock/expiry every 1m
+        }
+        
+        if (window.firebaseBackendReady) {
+            startApp();
+        } else {
+            window.addEventListener('firebaseBackendReady', startApp);
+        }
     </script>
     <!-- Floating Widget -->
     <div class="fixed-widget">
