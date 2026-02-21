@@ -367,6 +367,7 @@
             } catch (e) { showNotify("Lỗi Export", e.message, true); }
         }
 
+        window.addEventListener('socket_data_changed', initData);
         function logout() { sessionStorage.clear(); window.location.href = '../index.html'; }
     </script>
 </body>

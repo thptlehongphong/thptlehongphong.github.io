@@ -724,12 +724,7 @@
             }
         }
 
-        // --- SOCKET.IO REAL-TIME ---
-        const socket = io();
-        socket.on('data_changed', () => {
-            console.log('Real-time update: Data changed on server. Refreshing...');
-            initData();
-        });
+        let socket;
         
         function populateFilterOptions(vTypes, rTypes) {
             const select = document.getElementById('filterType');
@@ -1315,6 +1310,12 @@
         });
 
         function startApp() {
+            socket = window.io();
+            socket.on('data_changed', () => {
+                console.log('Real-time update: Data changed on server. Refreshing...');
+                initData();
+                checkSystemStatus();
+            });
             initData();
             checkSystemStatus();
             setInterval(initData, 30000); // Pulse check every 30s

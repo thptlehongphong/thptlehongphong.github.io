@@ -795,7 +795,7 @@
             const ws = XLSX.utils.json_to_sheet(allViolations.map(v => ({ "Thời gian": new Date(v.timestamp).toLocaleString(), "Học sinh": v.student_name, "Lớp": v.class_name, "Nội dung": v.type_name, "Điểm": v.points_change })));
             const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, "LichSu.xlsx");
         }
-        init();
+        window.addEventListener('socket_data_changed', init);
         setInterval(() => {
             fetchConfigs();
             fetchAdmins();

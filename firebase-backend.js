@@ -28,21 +28,37 @@ let memAdmins = {};
 let memSettings = {};
 
 let backendReady = false;
+
+function fireMockSocket() {
+    if (backendReady) {
+        window.dispatchEvent(new Event('socket_data_changed'));
+    }
+}
+
 const readyPromise = Promise.all([
-    new Promise(resolve => onValue(ref(db, 'students'), snap => { memStudents = snap.val() || {}; resolve(); })),
-    new Promise(resolve => onValue(ref(db, 'history'), snap => { memHistory = snap.val() || {}; resolve(); })),
-    new Promise(resolve => onValue(ref(db, 'classes'), snap => { memClasses = snap.val() || {}; resolve(); })),
-    new Promise(resolve => onValue(ref(db, 'admins'), snap => { memAdmins = snap.val() || {}; resolve(); })),
-    new Promise(resolve => onValue(ref(db, 'settings'), snap => { memSettings = snap.val() || {}; resolve(); }))
-]).then(() => { backendReady = true; console.log("[Firebase Mocker] Memory Replicas synchronized."); });
+    new Promise(resolve => onValue(ref(db, 'students'), snap => { memStudents = snap.val() || {}; resolve(); fireMockSocket(); })),
+    new Promise(resolve => onValue(ref(db, 'history'), snap => { memHistory = snap.val() || {}; resolve(); fireMockSocket(); })),
+    new Promise(resolve => onValue(ref(db, 'classes'), snap => { memClasses = snap.val() || {}; resolve(); fireMockSocket(); })),
+    new Promise(resolve => onValue(ref(db, 'admins'), snap => { memAdmins = snap.val() || {}; resolve(); fireMockSocket(); })),
+    new Promise(resolve => onValue(ref(db, 'settings'), snap => { memSettings = snap.val() || {}; resolve(); fireMockSocket(); }))
+]).then(() => { 
+    backendReady = true; 
+    console.log("[Firebase Mocker] Memory Replicas synchronized."); 
+    window.dispatchEvent(new Event('socket_data_changed')); // Fire once when all ready
+});
 
 async function waitForSync() {
     if (!backendReady) await readyPromise;
 }
 
 window.io = function() {
+    const listeners = {};
+    window.addEventListener('socket_data_changed', () => {
+        if (listeners['data_changed']) listeners['data_changed']();
+    });
     return {
         on: (event, callback) => {
+            listeners[event] = callback;
             if (event === 'data_changed') {
                 const triggerRef = ref(db, 'system_triggers/data_changed');
                 onValue(triggerRef, () => { callback(); });
