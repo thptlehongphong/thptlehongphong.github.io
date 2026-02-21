@@ -41,6 +41,7 @@ jobs:
         # Copy các tài nguyên còn lại, loại trừ JS (đã làm rối) và HTML (đã nén)
         run: |
           cp CNAME ./dist/ || true
+          cp logo.png ./dist/ || true
           rsync -av --exclude='*.js' --exclude='*.html' Diemdanh/ dist/Diemdanh/ || true
           rsync -av --exclude='*.js' --exclude='*.html' Kyluat/ dist/Kyluat/ || true
           rsync -av --exclude='*.js' --exclude='*.html' Sinhhoatdoan/ dist/Sinhhoatdoan/ || true
