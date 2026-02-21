@@ -269,7 +269,7 @@
         function renderStudentDataAdmin3(data) {
             currentStudent = data;
             document.getElementById('resImg').src = `/api/students/${data.id}/photo`;
-            document.getElementById('resImg').onerror = function() { this.src = '/logo.png'; };
+            document.getElementById('resImg').onerror = function() { this.src = '../logo.png'; };
             document.getElementById('resName').textContent = data.name;
             document.getElementById('resInfo').textContent = `Lớp: ${data.class_name || data.class} | ID: ${data.id}`;
             document.getElementById('studentResult').style.display = 'block';

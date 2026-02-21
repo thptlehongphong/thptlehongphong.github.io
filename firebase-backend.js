@@ -368,6 +368,39 @@ const observer = new MutationObserver((mutations) => {
     });
 });
 
+const photoCache = {};
+const logoPath = window.location.pathname.includes('/Kyluat/') ? '../logo.png' : './logo.png';
+
+const ioObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const imgNode = entry.target;
+            observer.unobserve(imgNode);
+            loadPhoto(imgNode);
+        }
+    });
+}, { rootMargin: "100px" });
+
+async function loadPhoto(imgNode) {
+    const url = imgNode.getAttribute('data-hijack-src');
+    const idMatch = url.match(/\/api\/students\/(.+)\/photo/);
+    if (!idMatch) return;
+    
+    const studentId = idMatch[1];
+    if (photoCache[studentId]) {
+        imgNode.src = photoCache[studentId];
+        return;
+    }
+    
+    try {
+        const snap = await get(ref(db, `photos/${studentId}`));
+        const photoB64 = snap.val();
+        const finalSrc = photoB64 || logoPath;
+        photoCache[studentId] = finalSrc;
+        imgNode.src = finalSrc;
+    } catch { imgNode.src = logoPath; }
+}
+
 async function hijackImgSrc(imgNode) {
     if (imgNode._isHijacked) return;
     const url = imgNode.getAttribute('src');
@@ -375,12 +408,9 @@ async function hijackImgSrc(imgNode) {
     if (!idMatch) return;
     imgNode._isHijacked = true;
     
-    // We fetch photo lazily as it's big
-    try {
-        const snap = await get(ref(db, `photos/${idMatch[1]}`));
-        const photoB64 = snap.val();
-        imgNode.src = photoB64 || '/logo.png';
-    } catch { imgNode.src = '/logo.png'; }
+    imgNode.setAttribute('data-hijack-src', url);
+    imgNode.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // placeholder
+    ioObserver.observe(imgNode);
 }
 
 observer.observe(document.body || document.documentElement, {
