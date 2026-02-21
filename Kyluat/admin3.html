@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1100">
+    <title>Admin 3 - Xử Lý Vi Phạm</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="../student_data.js"></script>
+    <script type="module" src="../firebase-backend.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --danger: #ef4444;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+        body { background: #0f172a; color: white; min-height: 100vh; padding: 20px 5%; }
+
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 24px; padding: 25px; margin-bottom: 20px; }
+
+        .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
+        input[type="text"] {
+            flex: 1; padding: 14px; border-radius: 12px; border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03); color: white; outline: none;
+        }
+
+        .btn { padding: 12px 20px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.3s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-danger { background: var(--danger); color: white; width: 100%; margin-top: 15px; }
+
+        .student-result { display: none; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .student-profile { display: flex; align-items: center; gap: 20px; margin-bottom: 25px; }
+        .profile-img { width: 100px; height: 100px; border-radius: 15px; object-fit: cover; border: 2px solid var(--primary); }
+
+        .violation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .v-item {
+            background: rgba(255, 255, 255, 0.03); border: 1px solid var(--glass-border);
+            padding: 12px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+            transition: 0.2s; user-select: none;
+        }
+        .v-item.active { 
+            border-color: #6366f1; /* Đổi sang màu primary để contrast tốt hơn */
+            background: #ffffff;   /* Nền trắng nổi bật */
+            color: #0f172a;        /* Chữ đen đậm */
+            font-weight: 700;
+        }
+        .v-item input { pointer-events: none; }
+
+        textarea {
+            width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03); color: white; outline: none; margin-top: 15px; min-height: 80px;
+        }
+
+        /* Modal Preview */
+        .modal {
+            display: none; position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); z-index: 2000;
+            justify-content: center; align-items: center; backdrop-filter: blur(5px);
+        }
+        .modal-content { max-width: 90%; max-height: 90%; border-radius: 20px; border: 2px solid var(--primary); }
+
+        /* Custom Notification Modal */
+        .notify-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9); z-index: 10000;
+            justify-content: center; align-items: center; backdrop-filter: blur(8px);
+        }
+        .notify-content {
+            background: #1e293b; border: 1px solid var(--glass-border); padding: 30px;
+            border-radius: 24px; max-width: 400px; width: 90%; text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: modalPop 0.2s ease-out;
+        }
+        @keyframes modalPop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .notify-icon { font-size: 40px; margin-bottom: 15px; display: block; }
+        .notify-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; }
+        .notify-msg { color: #cbd5e1; line-height: 1.5; margin-bottom: 25px; font-size: 0.95rem; }
+        .notify-error .notify-title { color: #ef4444; }
+        .notify-success .notify-title { color: #10b981; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3>Admin 3 - Ghi Nhận Vi Phạm</h3>
+            <button style="background: none; border: none; color: white; cursor: pointer;" onclick="logout()">Thoát</button>
+        </div>
+
+        <div class="card">
+            <div class="search-box">
+                <input type="text" id="searchId" placeholder="Nhập MSHS để tìm kiếm...">
+                <button class="btn btn-primary" onclick="searchStudent()">Tìm</button>
+                <button class="btn" style="background: #818cf8; color: white; display: inline-flex; align-items: center; gap: 5px;" onclick="toggleScanner()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    Quét QR
+                </button>
+            </div>
+
+            <!-- QR Scanner Area -->
+            <div id="reader" style="width: 100%; margin-bottom: 20px; border-radius: 12px; overflow: hidden; display: none;"></div>
+
+            <div id="studentResult" class="student-result">
+                <div class="student-profile">
+                    <img id="resImg" class="profile-img" src="" alt="" onclick="showImg(this.src)" style="cursor: zoom-in;">
+                    <div>
+                        <h2 id="resName"></h2>
+                        <p id="resInfo" style="color: #94a3b8; font-size: 0.9rem;"></p>
+                    </div>
+                </div>
+
+                <div style="border-top: 1px solid var(--glass-border); padding-top: 20px;">
+                    <p style="margin-bottom: 15px; font-weight: 600;">Chọn các lỗi vi phạm:</p>
+                    <div class="violation-options" id="violationOptionsContainer">
+                        <!-- Dynamic Options -->
+                    </div>
+                    
+                    <textarea id="violationNote" placeholder="Ghi chú chi tiết thêm (nếu có)..." style="margin-top: 15px; min-height: 80px;"></textarea>
+                    
+                    <button class="btn btn-danger" onclick="submitViolation()">Xác Nhận Vi Phạm</button>
+                </div>
+            </div>
+
+            <div id="noMatch" style="display: none; text-align: center; color: var(--danger); padding: 20px;">
+                Không tìm thấy học sinh với mã số này!
+            </div>
+        </div>
+    </div>
+
+    <div id="imageModal" class="modal" onclick="closeImg()">
+        <img class="modal-content" id="imgFull">
+    </div>
+
+    <!-- Notification Modal -->
+    <div id="notifyModal" class="notify-modal">
+        <div class="notify-content" id="notifyContent">
+            <span id="notifyIcon" class="notify-icon"></span>
+            <h3 id="notifyTitle" class="notify-title"></h3>
+            <p id="notifyMsg" class="notify-msg"></p>
+            <button type="button" class="btn btn-primary" onclick="closeNotify()">Đồng ý</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        const currentRole = sessionStorage.getItem('kyluat_role');
+        if (currentRole !== 'admin3' && currentRole !== 'admin0') {
+            window.location.href = '../index.html';
+        }
+
+        let violationTypesConf = {};
+
+        async function checkSystemStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`);
+                const data = await res.json();
+                
+                const today = new Date().toISOString().split('T')[0];
+                const isExpired = data.expiry_date && today > data.expiry_date;
+                const perms = JSON.parse(data.permissions || '{"admin1":true,"admin2":true,"admin3":true,"admin4":true}');
+                const isRoleBlocked = perms[currentRole] === false;
+
+                if ((isExpired || isRoleBlocked) && currentRole !== 'admin0') {
+                    showNotify("Thông báo hệ thống", isRoleBlocked ? "Quyền truy cập của bạn đã bị tạm khóa!" : "Hệ thống đã hết thời hạn sử dụng!", true);
+                    setTimeout(() => window.location.href = '../index.html', 3000);
+                }
+
+                violationTypesConf = JSON.parse(data.violationtypes || '{}');
+                renderViolationOptions();
+            } catch (err) { console.error(err); }
+        }
+        checkSystemStatus();
+        setInterval(checkSystemStatus, 30000);
+
+        function renderViolationOptions() {
+            const container = document.getElementById('violationOptionsContainer');
+            container.innerHTML = '';
+            if (Object.keys(violationTypesConf).length === 0) {
+                container.innerHTML = '<p style="color:#94a3b8; grid-column:span 2;">Chưa có danh mục lỗi nào.</p>';
+                return;
+            }
+            Object.entries(violationTypesConf).forEach(([key, val]) => {
+                const div = document.createElement('div');
+                div.className = 'v-item';
+                div.onclick = function() { toggleV(this) };
+                div.dataset.points = val.points;
+                div.innerHTML = `
+                    <input type="checkbox" value="${val.name}">
+                    <span>${val.name} <small style="color:#f87171">(-${Math.abs(val.points)})</small></span>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function showImg(src) {
+            if(!src) return;
+            document.getElementById('imgFull').src = src;
+            document.getElementById('imageModal').style.display = 'flex';
+        }
+        function closeImg() { document.getElementById('imageModal').style.display = 'none'; }
+
+        function showNotify(title, message, isError = false) {
+            const modal = document.getElementById('notifyModal');
+            const content = document.getElementById('notifyContent');
+            const icon = document.getElementById('notifyIcon');
+            const titleEl = document.getElementById('notifyTitle');
+            const msgEl = document.getElementById('notifyMsg');
+            content.className = 'notify-content ' + (isError ? 'notify-error' : 'notify-success');
+            icon.innerText = isError ? '⚠️' : '✅';
+            titleEl.innerText = title;
+            msgEl.innerText = message;
+            modal.style.display = 'flex';
+        }
+        function closeNotify() { document.getElementById('notifyModal').style.display = 'none'; }
+
+        let currentStudent = null;
+        let html5QrCode = null;
+
+        function toggleScanner() {
+            const reader = document.getElementById('reader');
+            if (reader.style.display === 'none') {
+                reader.style.display = 'block';
+                startScanner();
+            } else {
+                stopScanner();
+                reader.style.display = 'none';
+            }
+        }
+
+        async function startScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            try {
+                await html5QrCode.start({ facingMode: "environment" }, config, async (decodedText) => {
+                    document.getElementById('searchId').value = decodedText.trim().toUpperCase();
+                    await searchStudent(); // Auto trigger search
+                    showNotify("QR Code", "Đã nhận diện mã: " + decodedText);
+                    toggleScanner(); // Close scanner
+                });
+            } catch (err) {
+                showNotify("Lỗi Camera", "Không thể truy cập camera!", true);
+                document.getElementById('reader').style.display = 'none';
+            }
+        }
+
+        async function stopScanner() {
+            if (html5QrCode) {
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode = null;
+                } catch (e) {}
+            }
+        }
+
+        function renderStudentDataAdmin3(data) {
+            currentStudent = data;
+            document.getElementById('resImg').src = `/api/students/${data.id}/photo`;
+            document.getElementById('resImg').onerror = function() { this.src = '/logo.png'; };
+            document.getElementById('resName').textContent = data.name;
+            document.getElementById('resInfo').textContent = `Lớp: ${data.class_name || data.class} | ID: ${data.id}`;
+            document.getElementById('studentResult').style.display = 'block';
+            document.getElementById('noMatch').style.display = 'none';
+        }
+
+        async function searchStudent() {
+            const id = document.getElementById('searchId').value.trim().toUpperCase();
+            if(!id) return;
+
+            try {
+                // ⚡ Offline First & Instance Cache Check
+                const cachedData = localStorage.getItem('fb_mock_students_data');
+                if (cachedData) {
+                    try {
+                        const students = JSON.parse(cachedData);
+                        const s = students.find(x => x.id === id);
+                        if (s) {
+                            renderStudentDataAdmin3(s);
+                        }
+                    } catch(e) {}
+                }
+
+                // ⏳ Background Update from Server
+                const res = await fetch(`${API_BASE}/api/students/${id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.photo && typeof STATIC_STUDENTS !== 'undefined') {
+                        const staticData = STATIC_STUDENTS.find(s => s.id === id);
+                        if (staticData) data.photo = staticData.photo;
+                    }
+                    renderStudentDataAdmin3(data);
+                } else {
+                    currentStudent = null;
+                    document.getElementById('studentResult').style.display = 'none';
+                    document.getElementById('noMatch').style.display = 'block';
+                }
+            } catch (err) { showNotify("Lỗi", "Lỗi tìm kiếm học sinh!", true); }
+        }
+
+        function toggleV(el) {
+            const cb = el.querySelector('input');
+            cb.checked = !cb.checked;
+            el.classList.toggle('active', cb.checked);
+        }
+
+        async function submitViolation() {
+            if (!currentStudent) return;
+            const activeItems = document.querySelectorAll('.v-item.active');
+            const types = [];
+            let totalDeduction = 0;
+
+            activeItems.forEach(el => {
+                const cb = el.querySelector('input');
+                types.push(cb.value);
+                // Lấy giá trị tuyệt đối để tránh lỗi dấu âm kép khi tính toán
+                totalDeduction += Math.abs(parseInt(el.dataset.points)) || 1;
+            });
+
+            if (types.length === 0) return showNotify("Thiếu thông tin", "Vui lòng chọn ít nhất 1 lỗi vi phạm!", true);
+
+            const note = document.getElementById('violationNote').value.trim();
+            const violationString = types.join(', ') + (note ? ` (Chi tiết: ${note})` : '');
+
+            const violationData = {
+                student_id: currentStudent.id,
+                type_name: violationString,
+                points_change: -totalDeduction,
+                is_merit: false,
+                created_by: sessionStorage.getItem('kyluat_id')
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/api/history`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(violationData)
+                });
+                if (res.ok) {
+                    showNotify("Thành công", `Đã ghi nhận vi phạm và trừ ${totalDeduction} sao!`);
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showNotify("Lỗi", "Lỗi khi lưu vi phạm lên hệ thống bài!", true);
+                }
+            } catch (err) { showNotify("Lỗi kết nối", "Lỗi kết nối máy chủ!", true); }
+        }
+        function logout() { sessionStorage.clear(); window.location.href = '../index.html'; }
+    </script>
+</body>
+</html>
