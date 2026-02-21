@@ -1022,8 +1022,8 @@
                 const displayText = isLong ? item.violationType.substring(0, 25) + '...' : item.violationType;
                 
                 const student = allStudents.find(s => s.id === item.studentId);
-                const currentName = student ? student.name : item.studentName;
-                const currentClass = student ? student.class : item.studentClass;
+                const currentName = student ? student.name : (item.studentName || "Học sinh đã bị xóa/ẩn");
+                const currentClass = student ? student.class : (item.studentClass || "N/A");
                 const currentPhoto = student ? student.photo : "";
                 const stars = student ? (student.stars || 0) : 0;
                 const starColor = stars <= -10 ? 'danger-text' : (stars >= 10 ? '#10b981' : '#f59e0b');

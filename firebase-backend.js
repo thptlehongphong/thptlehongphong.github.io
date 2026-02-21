@@ -233,8 +233,10 @@ window.fetch = async function(resource, config) {
                 const newRef = push(ref(db, 'history'));
                 set(newRef, { ...bodyArgs, timestamp: Date.now() });
                 
-                const currentStars = (memStudents[bodyArgs.student_id]?.stars || 0);
-                set(ref(db, `students/${bodyArgs.student_id}/stars`), currentStars + bodyArgs.points_change);
+                if (memStudents[bodyArgs.student_id] && memStudents[bodyArgs.student_id].name) {
+                    const currentStars = (memStudents[bodyArgs.student_id]?.stars || 0);
+                    set(ref(db, `students/${bodyArgs.student_id}/stars`), currentStars + bodyArgs.points_change);
+                }
                 triggerDataChanged();
                 return createJsonResponse({ message: "Added" }, 201);
             }
@@ -243,8 +245,10 @@ window.fetch = async function(resource, config) {
                 if (match) {
                     const hData = memHistory[match[1]];
                     if (hData) {
-                        const currentStars = (memStudents[hData.student_id]?.stars || 0);
-                        set(ref(db, `students/${hData.student_id}/stars`), currentStars - hData.points_change);
+                        if (memStudents[hData.student_id] && memStudents[hData.student_id].name) {
+                            const currentStars = (memStudents[hData.student_id]?.stars || 0);
+                            set(ref(db, `students/${hData.student_id}/stars`), currentStars - hData.points_change);
+                        }
                         remove(ref(db, `history/${match[1]}`));
                         triggerDataChanged();
                     }
@@ -296,10 +300,14 @@ window.fetch = async function(resource, config) {
                     return createJsonResponse({ error: "Not found" }, 404);
                 }
 
-                const studentsArray = Object.values(memStudents).map(s => {
-                    const { photo, ...rest } = s; 
-                    return rest;
-                });
+                const studentsArray = Object.keys(memStudents)
+                    .filter(id => memStudents[id] && memStudents[id].name)
+                    .map(id => {
+                        const s = memStudents[id];
+                        s.id = id;
+                        const { photo, ...rest } = s; 
+                        return rest;
+                    });
                 
                 studentsArray.sort((a,b) => {
                     if (b.stars !== a.stars) return b.stars - a.stars;
@@ -349,24 +357,7 @@ window.fetch = async function(resource, config) {
     return originalFetch(resource, config);
 };
 
-const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-            mutation.addedNodes.forEach(node => {
-               if (node.tagName === 'IMG' && node.src && node.src.includes('/api/students/')) {
-                   hijackImgSrc(node);
-               } 
-               if (node.querySelectorAll) {
-                   node.querySelectorAll('img[src*="/api/students/"]').forEach(hijackImgSrc);
-               }
-            });
-        } else if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
-             if (mutation.target.tagName === 'IMG' && mutation.target.src && mutation.target.src.includes('/api/students/')) {
-                 hijackImgSrc(mutation.target);
-             }
-        }
-    });
-});
+
 
 const photoCache = {};
 const logoPath = window.location.pathname.includes('/Kyluat/') ? '../logo.png' : './logo.png';
@@ -391,32 +382,69 @@ async function loadPhoto(imgNode) {
         imgNode.src = photoCache[studentId];
         return;
     }
+
+    const localCached = localStorage.getItem(`fb_photo_${studentId}`);
+    if (localCached) {
+        photoCache[studentId] = localCached;
+        imgNode.src = localCached;
+        return;
+    }
     
     try {
         const snap = await get(ref(db, `photos/${studentId}`));
         const photoB64 = snap.val();
         const finalSrc = photoB64 || logoPath;
         photoCache[studentId] = finalSrc;
+        if (photoB64) {
+            try { localStorage.setItem(`fb_photo_${studentId}`, finalSrc); } catch(e) {}
+        }
         imgNode.src = finalSrc;
     } catch { imgNode.src = logoPath; }
 }
 
 async function hijackImgSrc(imgNode) {
     if (imgNode._isHijacked) return;
-    const url = imgNode.getAttribute('src');
-    const idMatch = url.match(/\/api\/students\/(.+)\/photo/);
+    const url = imgNode.getAttribute('data-hijack-src') || imgNode.getAttribute('src');
+    const idMatch = url?.match(/\/api\/students\/(.+)\/photo/);
     if (!idMatch) return;
     imgNode._isHijacked = true;
     
     imgNode.setAttribute('data-hijack-src', url);
-    imgNode.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // placeholder
+    imgNode.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // transparent placeholder
     ioObserver.observe(imgNode);
 }
 
-observer.observe(document.body || document.documentElement, {
-    childList: true, subtree: true, attributes: true, attributeFilter: ['src']
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach(node => {
+               if (node.tagName === 'IMG') {
+                   const s = node.getAttribute('src') || '';
+                   const ds = node.getAttribute('data-hijack-src') || '';
+                   if (s.includes('/api/students/') || ds.includes('/api/students/')) {
+                       hijackImgSrc(node);
+                   }
+               } 
+               if (node.querySelectorAll) {
+                   node.querySelectorAll('img[src*="/api/students/"], img[data-hijack-src*="/api/students/"]').forEach(hijackImgSrc);
+               }
+            });
+        } else if (mutation.type === 'attributes' && (mutation.attributeName === 'src' || mutation.attributeName === 'data-hijack-src')) {
+             if (mutation.target.tagName === 'IMG') {
+                 const s = mutation.target.getAttribute('src') || '';
+                 const ds = mutation.target.getAttribute('data-hijack-src') || '';
+                 if (s.includes('/api/students/') || ds.includes('/api/students/')) {
+                     hijackImgSrc(mutation.target);
+                 }
+             }
+        }
+    });
 });
-document.querySelectorAll('img[src*="/api/students/"]').forEach(hijackImgSrc);
+
+observer.observe(document.body || document.documentElement, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-hijack-src']
+});
+document.querySelectorAll('img[src*="/api/students/"], img[data-hijack-src*="/api/students/"]').forEach(hijackImgSrc);
 console.log("[Firebase Mocker] API Call interceptions active.");
 
 window.firebaseBackendReady = true;
