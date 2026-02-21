@@ -95,6 +95,53 @@
             font-size: 1.8rem;
         }
 
+        .layout-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .promo-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+            transition: 0.3s;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .promo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+        .promo-card.featured {
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.15);
+            background: linear-gradient(145deg, rgba(46, 35, 76, 0.8), rgba(15, 23, 42, 0.9));
+        }
+        .promo-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px;
+            background: linear-gradient(90deg, #818cf8, #f472b6);
+        }
+        .promo-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .promo-desc { font-size: 0.85rem; color: #94a3b8; margin-bottom: 20px; line-height: 1.6; flex-grow: 1; }
+        .promo-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.9rem;
+            color: white; text-decoration: none; transition: 0.3s;
+            border: 1px solid transparent;
+            margin-top: auto;
+        }
+        .btn-gradient { background: linear-gradient(135deg, #6366f1, #a855f7); }
+        .btn-gradient:hover { background: linear-gradient(135deg, #4f46e5, #9333ea); box-shadow: 0 5px 15px rgba(99, 102, 241, 0.3); }
+        .btn-outline-glass { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+        .btn-outline-glass:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+
         .input-group {
             margin-bottom: 20px;
         }
@@ -557,7 +604,7 @@
         </div>
 
         <!-- Section 1: History (Violations) -->
-        <div class="card" style="margin-bottom: 40px; min-height: 600px;">
+                <div class="card" style="margin-bottom: 40px; min-height: 600px;">
             <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; gap: 15px;">
                 <h2 style="font-size: 1.2rem; display: flex; align-items: center; gap: 10px; margin: 0;">📅 Bảng Theo Vi phạm <span class="live-tag" style="font-size: 0.65rem; padding: 2px 6px;">Live</span></h2>
                 
@@ -630,6 +677,30 @@
                 <!-- Content will be rendered here -->
             </div>
             <div class="pagination" id="classRankPagination"></div>
+        </div>
+
+        <!-- Promotions Horizontal Section -->
+        <h2 style="font-size: 1.5rem; margin: 40px 0 20px 0; display: flex; align-items: center; gap: 10px;">🌟 Góc Thông Tin & Tiện Ích Học Đường</h2>
+        <div class="layout-grid" style="align-items: stretch;">
+            <div class="promo-card featured">
+                <div class="promo-title">🧠 Tham Vấn Tâm Lý & Hướng Nghiệp</div>
+                <div class="promo-desc">Chương trình tư vấn tâm lý học đường chuyên sâu và định hướng nghề nghiệp sớm, giúp học sinh giải tỏa áp lực và phụ huynh thấu hiểu con cái.</div>
+                <a href="#" class="promo-btn btn-gradient">Đặt Lịch Tư Vấn</a>
+            </div>
+            
+            <div class="promo-card" style="border-top-color: #f43f5e;">
+                <style>.layout-grid .promo-card:nth-child(2)::before { background: linear-gradient(90deg, #f43f5e, #fb7185); }</style>
+                <div class="promo-title">🎨 Workshop Sáng Tạo & Trải Nghiệm</div>
+                <div class="promo-desc">Chuỗi sự kiện giáo dục kỹ năng cuối tuần: Diễn thuyết trước đám đông (TEDx Format), tranh biện (Debate), rèn luyện tư duy phản biện.</div>
+                <a href="#" class="promo-btn btn-outline-glass">Săn Vé Tham Gia</a>
+            </div>
+
+            <div class="promo-card" style="border-top-color: #f59e0b;">
+                 <style>.layout-grid .promo-card:nth-child(3)::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }</style>
+                <div class="promo-title">🤝 Gây Quỹ Học Bổng & Phục Vụ Cộng Đồng</div>
+                <div class="promo-desc">Chương trình thiện nguyện "Mái Ấm Tình Thương": Kêu gọi tài trợ sách vở, nhu yếu phẩm cho học sinh vùng sâu vùng xa do Đoàn Trường tổ chức.</div>
+                <a href="#" class="promo-btn btn-outline-glass">Chung Tay Đóng Góp</a>
+            </div>
         </div>
     </div>
 
